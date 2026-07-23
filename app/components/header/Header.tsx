@@ -4,7 +4,7 @@ import { chatStore } from '~/lib/stores/chat';
 import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
 import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
-import { GoogleAuthButton } from '~/components/auth/GoogleAuthButton.client';
+import { ClerkAuthButtons } from '~/components/auth/ClerkAuthButtons.client';
 
 export function Header() {
   const chat = useStore(chatStore);
@@ -40,7 +40,7 @@ export function Header() {
       <ClientOnly>
         {() => (
           <div className="ml-2 flex items-center">
-            <GoogleAuthButton />
+            <ClerkAuthButtons />
           </div>
         )}
       </ClientOnly>
