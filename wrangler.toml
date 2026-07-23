@@ -3,3 +3,18 @@ name = "bolt"
 compatibility_flags = ["nodejs_compat"]
 compatibility_date = "2024-07-01"
 pages_build_output_dir = "./build/client"
+
+# ── Cloudflare D1 (server-side chat history sync) ──────────────────
+# One-time setup:
+#   1. npx wrangler login
+#   2. npx wrangler d1 create jayc-chats
+#   3. replace the placeholder database_id below with the id it prints
+#   4. npx wrangler d1 migrations apply jayc-chats --remote
+# Until a real database_id is in place, deploys that use this binding
+# will fail — the app code itself treats a missing DB binding as
+# "sync off" and keeps working with browser-only storage.
+[[d1_databases]]
+binding = "DB"
+database_name = "jayc-chats"
+database_id = "TODO_replace_with_database_id"
+migrations_dir = "migrations"

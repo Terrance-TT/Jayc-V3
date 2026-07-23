@@ -5,6 +5,7 @@ import type { Message } from 'ai';
 import { toast } from 'react-toastify';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { getMessages, getNextId, getUrlId, openDatabase, setMessages } from './db';
+import { fetchChatFromServer, syncChatToServer } from './sync.client';
 
 export interface ChatHistoryItem {
   id: string;
@@ -42,12 +43,26 @@ export function useChatHistory() {
 
     if (mixedId) {
       getMessages(db, mixedId)
-        .then((storedMessages) => {
-          if (storedMessages && storedMessages.messages.length > 0) {
-            setInitialMessages(storedMessages.messages);
-            setUrlId(storedMessages.urlId);
-            description.set(storedMessages.description);
-            chatId.set(storedMessages.id);
+        .then(async (storedMessages) => {
+          let item = storedMessages;
+
+          // local cache miss — try the server (signed-in users get cross-device history)
+          if (!item || item.messages.length === 0) {
+            const remote = await fetchChatFromServer(mixedId);
+
+            if (remote && remote.messages.length > 0) {
+              item = remote;
+
+              // hydrate the local cache so the next visit works offline
+              setMessages(db, remote.id, remote.messages, remote.urlId, remote.description).catch(() => undefined);
+            }
+          }
+
+          if (item && item.messages.length > 0) {
+            setInitialMessages(item.messages);
+            setUrlId(item.urlId);
+            description.set(item.description);
+            chatId.set(item.id);
           } else {
             navigate(`/`, { replace: true });
           }
@@ -92,6 +107,18 @@ export function useChatHistory() {
       }
 
       await setMessages(db, chatId.get() as string, messages, urlId, description.get());
+
+      /**
+       * Best-effort server sync — never blocks, never throws, silently
+       * no-ops when signed out or when the database isn't configured.
+       */
+      syncChatToServer({
+        id: chatId.get() as string,
+        urlId,
+        description: description.get(),
+        messages,
+        timestamp: new Date().toISOString(),
+      });
     },
   };
 }
