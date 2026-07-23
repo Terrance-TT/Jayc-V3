@@ -1,3 +1,4 @@
+import { getAll, setMessages } from './db';
 import type { ChatHistoryItem } from './useChatHistory';
 
 /**
@@ -86,4 +87,42 @@ export async function fetchChatFromServer(idOrUrlId: string): Promise<ChatHistor
 /** Delete one chat on the server. Fire-and-forget safe. */
 export async function deleteChatFromServer(id: string): Promise<void> {
   await request(`/api/chats/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+let hydrationAttempted = false;
+
+/**
+ * One-time background pull that copies server-side chats into the local
+ * IndexedDB cache.
+ *
+ * Besides making cross-device history available offline, this prevents id
+ * collisions: `getNextId` derives new chat ids from local keys only, so
+ * without hydration a second browser would reuse ids and overwrite another
+ * device's chat on the server. Runs at most once per session, never throws.
+ */
+export async function hydrateLocalCacheFromServer(db: IDBDatabase): Promise<void> {
+  if (hydrationAttempted) {
+    return;
+  }
+
+  hydrationAttempted = true;
+
+  const remote = await fetchChatsFromServer();
+
+  if (!remote || remote.length === 0) {
+    return;
+  }
+
+  try {
+    const local = await getAll(db);
+    const localIds = new Set(local.map((item) => item.id));
+
+    await Promise.all(
+      remote
+        .filter((item) => !localIds.has(item.id))
+        .map((item) => setMessages(db, item.id, item.messages, item.urlId, item.description).catch(() => undefined)),
+    );
+  } catch {
+    // local cache unavailable — server data is still reachable via fetch helpers
+  }
 }

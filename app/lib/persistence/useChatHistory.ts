@@ -5,7 +5,7 @@ import type { Message } from 'ai';
 import { toast } from 'react-toastify';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { getMessages, getNextId, getUrlId, openDatabase, setMessages } from './db';
-import { fetchChatFromServer, syncChatToServer } from './sync.client';
+import { fetchChatFromServer, hydrateLocalCacheFromServer, syncChatToServer } from './sync.client';
 
 export interface ChatHistoryItem {
   id: string;
@@ -40,6 +40,13 @@ export function useChatHistory() {
 
       return;
     }
+
+    /**
+     * Background hydration: pulls server chats into the local cache so
+     * cross-device history is available and new local ids can't collide
+     * with chats created on another device.
+     */
+    hydrateLocalCacheFromServer(db);
 
     if (mixedId) {
       getMessages(db, mixedId)
