@@ -4,7 +4,16 @@ import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { IconButton } from '~/components/ui/IconButton';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
-import { db, deleteById, getAll, chatId, type ChatHistoryItem } from '~/lib/persistence';
+import {
+  db,
+  deleteById,
+  getAll,
+  setMessages,
+  chatId,
+  fetchChatsFromServer,
+  deleteChatFromServer,
+  type ChatHistoryItem,
+} from '~/lib/persistence';
 import { cubicEasingFn } from '~/utils/easings';
 import { logger } from '~/utils/logger';
 import { HistoryItem } from './HistoryItem';
@@ -40,9 +49,39 @@ export function Menu() {
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
 
   const loadEntries = useCallback(() => {
-    if (db) {
-      getAll(db)
-        .then((list) => list.filter((item) => item.urlId && item.description))
+    // local alias: imported live bindings can't be narrowed inside closures
+    const database = db;
+
+    if (database) {
+      /**
+       * Merge local IndexedDB entries with the signed-in user's server-side
+       * chats (cross-device sync). Server sync is best-effort: when signed out
+       * or unconfigured, `fetchChatsFromServer` returns undefined and the list
+       * is exactly what it was before.
+       */
+      Promise.all([getAll(database), fetchChatsFromServer()])
+        .then(([local, remote]) => {
+          const merged = new Map<string, ChatHistoryItem>();
+
+          for (const item of local) {
+            merged.set(item.id, item);
+          }
+
+          for (const item of remote ?? []) {
+            const existing = merged.get(item.id);
+
+            // hydrate the local cache with chats made on other devices
+            if (!existing) {
+              setMessages(database, item.id, item.messages, item.urlId, item.description).catch(() => undefined);
+            }
+
+            if (!existing || item.timestamp > existing.timestamp) {
+              merged.set(item.id, item);
+            }
+          }
+
+          return [...merged.values()].filter((item) => item.urlId && item.description);
+        })
         .then(setList)
         .catch((error) => toast.error(error.message));
     }
@@ -54,6 +93,7 @@ export function Menu() {
     if (db) {
       deleteById(db, item.id)
         .then(() => {
+          deleteChatFromServer(item.id);
           loadEntries();
 
           if (chatId.get() === item.id) {
