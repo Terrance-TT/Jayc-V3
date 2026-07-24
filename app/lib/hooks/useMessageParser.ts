@@ -73,7 +73,7 @@ export function useMessageParser() {
         setParsedMessages((prevParsed) => ({
           ...prevParsed,
           [index]: !reset ? (prevParsed[index] || '') + newParsedContent : newParsedContent,
-        ));
+        }));
       }
     }
   }, []);
