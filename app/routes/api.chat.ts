@@ -21,13 +21,16 @@ async function chatAction(args: ActionFunctionArgs) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const { messages } = await request.json<{ messages: Messages }>();
+  const { messages, projectGraph } = await request.json<{ messages: Messages; projectGraph?: string }>();
 
   if (!Array.isArray(messages)) {
     return new Response('Bad Request', { status: 400 });
   }
 
-  if (messages.length > MAX_MESSAGES || JSON.stringify(messages).length > MAX_MESSAGES_TOTAL_LENGTH) {
+  if (
+    messages.length > MAX_MESSAGES ||
+    JSON.stringify(messages).length + (projectGraph?.length ?? 0) > MAX_MESSAGES_TOTAL_LENGTH
+  ) {
     return new Response('Payload Too Large', { status: 413 });
   }
 
@@ -52,13 +55,13 @@ async function chatAction(args: ActionFunctionArgs) {
         messages.push({ role: 'assistant', content });
         messages.push({ role: 'user', content: CONTINUE_PROMPT });
 
-        const result = await streamText(messages, context.cloudflare.env, options);
+        const result = await streamText(messages, context.cloudflare.env, options, projectGraph);
 
         return stream.switchSource(result.toAIStream());
       },
     };
 
-    const result = await streamText(messages, context.cloudflare.env, options);
+    const result = await streamText(messages, context.cloudflare.env, options, projectGraph);
 
     stream.switchSource(result.toAIStream());
 
