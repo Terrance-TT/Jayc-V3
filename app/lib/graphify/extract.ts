@@ -270,5 +270,11 @@ function extractDocComment(content: string): string | undefined {
     return undefined;
   }
 
-  return firstLine.length > DOC_COMMENT_MAX_LENGTH ? `${firstLine.slice(0, DOC_COMMENT_MAX_LENGTH - 3)}...` : firstLine;
+  // strip angle brackets so the comment can never break out of the
+  // `<project_graph>` section of the system prompt
+  const sanitized = firstLine.replace(/[<>]/g, '');
+
+  return sanitized.length > DOC_COMMENT_MAX_LENGTH
+    ? `${sanitized.slice(0, DOC_COMMENT_MAX_LENGTH - 3)}...`
+    : sanitized;
 }

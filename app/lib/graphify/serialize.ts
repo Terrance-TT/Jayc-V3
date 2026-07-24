@@ -50,25 +50,25 @@ export function serializeGraph(graph: ProjectGraph, budgetChars = 10_000): strin
       continue;
     }
 
-    const rel = toRelative(path);
+    const rel = sanitizeForPrompt(toRelative(path));
     const parts: string[] = [rel];
 
     if (node.exports.length > 0) {
-      parts.push(`exports: ${node.exports.join(', ')}`);
+      parts.push(`exports: ${node.exports.map(sanitizeForPrompt).join(', ')}`);
     }
 
     if (node.imports.length > 0) {
-      parts.push(`imports: ${[...new Set(node.imports.map((record) => record.specifier))].join(', ')}`);
+      parts.push(`imports: ${[...new Set(node.imports.map((record) => sanitizeForPrompt(record.specifier)))].join(', ')}`);
     }
 
-    const usedBy = (importers.get(path) ?? []).map(toRelative).sort();
+    const usedBy = (importers.get(path) ?? []).map((importer) => sanitizeForPrompt(toRelative(importer))).sort();
 
     if (usedBy.length > 0) {
       parts.push(`used-by: ${usedBy.join(', ')}`);
     }
 
     if (node.docComment) {
-      parts.push(`"${node.docComment}"`);
+      parts.push(`"${sanitizeForPrompt(node.docComment)}"`);
     }
 
     lines.push({
@@ -150,4 +150,13 @@ function toRelative(path: string): string {
   }
 
   return path.replace(/^\/+/, '');
+}
+
+/**
+ * Strips angle brackets so a rendered line can never break out of the
+ * `<project_graph>` section of the system prompt (e.g. a file path or
+ * symbol name containing `</project_graph>`).
+ */
+function sanitizeForPrompt(text: string): string {
+  return text.replace(/[<>]/g, '');
 }
