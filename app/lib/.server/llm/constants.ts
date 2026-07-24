@@ -11,3 +11,9 @@ export const MAX_TOKENS = 1048576;
 
 // Limits the number of model responses that can be returned in a single request.
 export const MAX_RESPONSE_SEGMENTS = 2;
+
+// How hard Kimi K3 thinks before answering: 'low' | 'high' | 'max'.
+// 'max' (the API default) caused 30+ minute generations. 'high' keeps
+// near-max code quality while cutting thinking time dramatically.
+// Change this one word to trade speed vs. deliberation.
+export const REASONING_EFFORT = 'high';
