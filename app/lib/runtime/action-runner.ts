@@ -33,6 +33,26 @@ export type ActionStateUpdate =
 
 type ActionsMap = MapStore<Record<string, ActionState>>;
 
+/**
+ * Patterns that match commands which start a long-running process (dev servers,
+ * watchers, previews). These never exit on their own, so awaiting their exit
+ * code would block the action queue forever and prevent any subsequent actions
+ * (e.g. file writes) from ever running.
+ */
+const LONG_RUNNING_COMMAND_PATTERNS = [
+  // package manager scripts that typically start servers or watchers
+  /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|preview|watch|storybook)\b/,
+
+  // direct invocations of common dev servers / watchers
+  /\b(vite|next|nuxt|astro|remix-dev|serve|servor|http-server|live-server|nodemon|ts-node-dev|storybook)\b/,
+  /\btsx\s+watch\b/,
+  /\bwrangler\s+dev\b/,
+];
+
+function isLongRunningCommand(command: string): boolean {
+  return LONG_RUNNING_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
+}
+
 export class ActionRunner {
   #webcontainer: Promise<WebContainer>;
   #currentExecutionPromise: Promise<void> = Promise.resolve();
@@ -143,6 +163,18 @@ export class ActionRunner {
         },
       }),
     );
+
+    if (isLongRunningCommand(action.content)) {
+      /**
+       * Long-running commands (dev servers, watchers) never exit on their own.
+       * Awaiting `process.exit` here would block the action queue forever, so
+       * we keep streaming output in the background and return immediately,
+       * allowing subsequent actions (file writes, installs, etc.) to run.
+       */
+      logger.debug('Detected long-running command, not awaiting exit:', action.content);
+
+      return;
+    }
 
     const exitCode = await process.exit;
 
