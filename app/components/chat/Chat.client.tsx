@@ -4,6 +4,7 @@ import { useChat } from 'ai/react';
 import { useAnimate } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
+import { getGraphSnapshot, initGraphify } from '~/lib/graphify';
 import { useErrorFeedback, useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
@@ -111,6 +112,10 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   }, []);
 
   useEffect(() => {
+    initGraphify(workbenchStore.files);
+  }, []);
+
+  useEffect(() => {
     parseMessages(messages, isLoading);
 
     if (messages.length > initialMessages.length) {
@@ -182,6 +187,10 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
     runAnimation();
 
+    // the ai SDK v3 merges `body` into the POST JSON; omit the field when the snapshot is empty
+    const projectGraph = getGraphSnapshot();
+    const body = projectGraph ? { projectGraph } : {};
+
     if (fileModifications !== undefined) {
       const diff = fileModificationsToHTML(fileModifications);
 
@@ -192,7 +201,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
        * manually reset the input and we'd have to manually pass in file attachments. However, those
        * aren't relevant here.
        */
-      append({ role: 'user', content: `${diff}\n\n${_input}` });
+      append({ role: 'user', content: `${diff}\n\n${_input}` }, { body });
 
       /**
        * After sending a new message we reset all modifications since the model
@@ -200,7 +209,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
        */
       workbenchStore.resetAllFileModifications();
     } else {
-      append({ role: 'user', content: _input });
+      append({ role: 'user', content: _input }, { body });
     }
 
     setInput('');
