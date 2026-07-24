@@ -31,7 +31,14 @@ const messageParser = new StreamingMessageParser({
       logger.trace('onActionClose', data.action);
 
       if (data.action.type === 'shell') {
+        /**
+         * Shell actions are only registered as pending — they must be
+         * confirmed by the user (Run command button in the artifact) before
+         * they are executed.
+         */
         workbenchStore.addAction(data);
+
+        return;
       }
 
       workbenchStore.runAction(data);

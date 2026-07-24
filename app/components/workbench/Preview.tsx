@@ -107,14 +107,19 @@ export const Preview = memo(() => {
             setActivePreviewIndex={setActivePreviewIndex}
             isDropdownOpen={isPortDropdownOpen}
             setHasSelectedPreview={(value) => (hasSelectedPreview.current = value)}
-            setIsDropdownOpen={setIsPortDropdownOpen}
+            setIsDropdownOpen={setIsDropdownOpen}
             previews={previews}
           />
         )}
       </div>
       <div className="flex-1 border-t border-bolt-elements-borderColor">
         {activePreview ? (
-          <iframe ref={iframeRef} className="border-none w-full h-full bg-white" src={iframeUrl} />
+          <iframe
+            ref={iframeRef}
+            className="border-none w-full h-full bg-white"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            src={iframeUrl}
+          />
         ) : (
           <div className="flex w-full h-full justify-center items-center bg-white">No preview available</div>
         )}

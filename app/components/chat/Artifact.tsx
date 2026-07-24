@@ -33,7 +33,7 @@ export const Artifact = memo(({ messageId }: ArtifactProps) => {
 
   const actions = useStore(
     computed(artifact.runner.actions, (actions) => {
-      return Object.values(actions);
+      return Object.entries(actions).map(([actionId, action]) => ({ ...action, actionId }));
     }),
   );
 
@@ -92,7 +92,7 @@ export const Artifact = memo(({ messageId }: ArtifactProps) => {
           >
             <div className="bg-bolt-elements-artifacts-borderColor h-[1px]" />
             <div className="p-5 text-left bg-bolt-elements-actions-background">
-              <ActionList actions={actions} />
+              <ActionList actions={actions} artifactId={artifact.id} messageId={messageId} />
             </div>
           </motion.div>
         )}
@@ -121,7 +121,9 @@ function ShellCodeBlock({ classsName, code }: ShellCodeBlockProps) {
 }
 
 interface ActionListProps {
-  actions: ActionState[];
+  actions: (ActionState & { actionId: string })[];
+  artifactId: string;
+  messageId: string;
 }
 
 const actionVariants = {
@@ -129,7 +131,7 @@ const actionVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-const ActionList = memo(({ actions }: ActionListProps) => {
+const ActionList = memo(({ actions, artifactId, messageId }: ActionListProps) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
       <ul className="list-none space-y-2.5">
@@ -180,6 +182,22 @@ const ActionList = memo(({ actions }: ActionListProps) => {
                   })}
                   code={content}
                 />
+              )}
+              {type === 'shell' && status === 'pending' && (
+                <button
+                  className={classNames(
+                    'mt-1 px-3 py-1.5 rounded-md text-xs',
+                    'bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:bg-bolt-elements-button-primary-backgroundHover',
+                    {
+                      'mb-3.5': !isLast,
+                    },
+                  )}
+                  onClick={() => {
+                    workbenchStore.runAction({ artifactId, messageId, actionId: action.actionId, action });
+                  }}
+                >
+                  Run command
+                </button>
               )}
             </motion.li>
           );
