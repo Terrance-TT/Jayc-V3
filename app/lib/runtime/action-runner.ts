@@ -57,6 +57,29 @@ function isLongRunningCommand(command: string): boolean {
   return LONG_RUNNING_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
 }
 
+/**
+ * Patterns that match dependency install commands. These are non-destructive
+ * and are a hard prerequisite for any dev server, so they are safe to run
+ * without manual confirmation.
+ */
+const INSTALL_COMMAND_PATTERNS = [
+  /\b(npm|pnpm|yarn|bun)\s+(install|ci|i|add)\b/,
+
+  // bare `yarn` / `pnpm` with no arguments also performs an install
+  /^\s*(yarn|pnpm)\s*$/,
+];
+
+/**
+ * Decides whether a shell action is safe to execute without manual
+ * confirmation. Dependency installs and long-running dev servers auto-run
+ * because both are required for the preview to come up; everything else —
+ * especially anything potentially destructive — still requires the user to
+ * click "Run command".
+ */
+export function shouldAutoRunCommand(command: string): boolean {
+  return isLongRunningCommand(command) || INSTALL_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
+}
+
 export class ActionRunner {
   #webcontainer: Promise<WebContainer>;
   #currentExecutionPromise: Promise<void> = Promise.resolve();

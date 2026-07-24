@@ -1,5 +1,6 @@
 import type { Message } from 'ai';
 import { useCallback, useState } from 'react';
+import { shouldAutoRunCommand } from '~/lib/runtime/action-runner';
 import { StreamingMessageParser } from '~/lib/runtime/message-parser';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { createScopedLogger } from '~/utils/logger';
@@ -34,16 +35,18 @@ const messageParser = new StreamingMessageParser({
         /**
          * Shell actions are only registered as pending — they must be
          * confirmed by the user (Run command button in the artifact) before
-         * they are executed.
+         * they are executed, unless shouldAutoRunCommand says they are safe.
          */
         workbenchStore.addAction(data);
 
         /**
-         * Auto-run dev server commands — they need to start for the preview
-         * iframe to have something to display. Destructive commands (rm,
-         * curl | sh, etc.) still require manual confirmation.
+         * Auto-run the commands the preview depends on: dependency installs
+         * (a dev server crashes without node_modules) and the dev servers
+         * themselves. Potentially destructive commands (rm, curl | sh, etc.)
+         * still require manual confirmation. The classifier lives in the
+         * runtime module so there is a single source of truth.
          */
-        if (/\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|preview)\b/.test(data.action.content)) {
+        if (shouldAutoRunCommand(data.action.content)) {
           workbenchStore.runAction(data);
         }
 
