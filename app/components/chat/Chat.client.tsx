@@ -101,7 +101,11 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     isLoading,
     sendFixRequest: (message) => {
       toast.info('Detected a runtime error — asking the AI to fix it');
-      append({ role: 'user', content: message });
+
+      // attach the graph snapshot like sendMessage does (field omitted when empty)
+      const projectGraph = getGraphSnapshot();
+
+      append({ role: 'user', content: message }, { body: projectGraph ? { projectGraph } : {} });
     },
   });
 
@@ -127,9 +131,14 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     const textarea = textareaRef.current;
 
     if (textarea) {
-      textarea.scrollTop = textarea.scrollHeight;
+      textarea.style.height = 'auto';
+
+      const scrollHeight = textarea.scrollHeight;
+
+      textarea.style.height = `${Math.min(scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
+      textarea.style.overflowY = scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
     }
-  };
+  }, [input, textareaRef]);
 
   const abort = () => {
     stop();
@@ -148,7 +157,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       textarea.style.height = `${Math.min(scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
       textarea.style.overflowY = scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
     }
-  }, [input, textareaRef]);
+  }, [input]);
 
   const runAnimation = async () => {
     if (chatStarted) {

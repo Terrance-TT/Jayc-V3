@@ -7,6 +7,7 @@ import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 
 const MAX_MESSAGES = 100;
 const MAX_MESSAGES_TOTAL_LENGTH = 200_000;
+const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -21,7 +22,15 @@ async function chatAction(args: ActionFunctionArgs) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const { messages, projectGraph } = await request.json<{ messages: Messages; projectGraph?: string }>();
+  const body = await request.json<{ messages: Messages; projectGraph?: unknown }>();
+  const { messages } = body;
+
+  // server-side validation: a non-string or oversized graph snapshot is
+  // ignored instead of being trusted blindly
+  const projectGraph =
+    typeof body.projectGraph === 'string' && body.projectGraph.length <= MAX_PROJECT_GRAPH_LENGTH
+      ? body.projectGraph
+      : undefined;
 
   if (!Array.isArray(messages)) {
     return new Response('Bad Request', { status: 400 });

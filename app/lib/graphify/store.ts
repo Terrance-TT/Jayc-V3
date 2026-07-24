@@ -33,6 +33,18 @@ export class GraphifyStore {
   }
 
   getSnapshot(): string {
+    /**
+     * Flush pending changes synchronously so a snapshot taken right after
+     * `saveAllFiles()` (i.e. at chat send time) never lags the files store.
+     * The sync is hash-diffed and therefore cheap; the debounce still
+     * applies to watcher events.
+     */
+    if (this.#timer !== undefined) {
+      clearTimeout(this.#timer);
+      this.#timer = undefined;
+      this.#sync();
+    }
+
     return serializeGraph(this.#graph);
   }
 
