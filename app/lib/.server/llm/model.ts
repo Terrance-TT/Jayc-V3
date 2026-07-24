@@ -1,7 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { env } from 'node:process';
 
-export function getMoonshotModel(apiKey: string) {
+export function getMoonshotModel(apiKey: string, env: Env) {
   const moonshot = createOpenAI({
     apiKey,
     baseURL: env.MOONSHOT_BASE_URL || 'https://api.moonshot.ai/v1',
