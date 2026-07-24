@@ -5,22 +5,15 @@ compatibility_date = "2024-07-01"
 pages_build_output_dir = "./build/client"
 
 # ── Cloudflare D1 (server-side chat history sync) ──────────────────
-# The D1 binding for this Pages project is configured in the Cloudflare
-# dashboard: Pages project → Settings → Bindings → Add → D1 database,
-# variable name "DB" → jayc-chats (for BOTH Production and Preview).
+# Database: jayc-chats — schema applied with:
+#   npx wrangler d1 execute jayc-chats --remote --file=migrations/0001_create_chats.sql
 #
-# Reason: `wrangler pages deploy` rejected this valid binding with
-# "Error 8000022: Invalid database UUID", so the dashboard is the source
-# of truth for the binding. Keep the block below commented out — a config
-# file binding overrides the dashboard on deploy.
-#
-# The database itself (jayc-chats) and its table were created via CLI:
-#   npx wrangler d1 create jayc-chats
-#   npx wrangler d1 migrations apply jayc-chats --remote
-#
-# Reference (uncomment only if managing bindings from the CLI again):
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "jayc-chats"
-# database_id = "7b368d02-c075-41d1-acd9-a2aca21c32a"
-# migrations_dir = "migrations"
+# Note: the earlier "Error 8000022: Invalid database UUID" deploy failure
+# was caused by a half-provisioned database (since deleted), not by this
+# config. The dashboard bindings UI is read-only for this project because
+# this file is the source of truth — manage the binding here.
+[[d1_databases]]
+binding = "DB"
+database_name = "jayc-chats"
+database_id = "ab589541-11fb-4330-8986-f271f356a348"
+migrations_dir = "migrations"
