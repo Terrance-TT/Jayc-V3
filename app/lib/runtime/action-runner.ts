@@ -87,9 +87,16 @@ export class ActionRunner {
       abortSignal: abortController.signal,
     });
 
-    this.#currentExecutionPromise.then(() => {
-      this.#updateAction(actionId, { status: 'running' });
-    });
+    /**
+     * Shell actions stay pending until the user explicitly confirms them via
+     * runAction (see useMessageParser / Artifact), so only file actions are
+     * optimistically marked as running here.
+     */
+    if (data.action.type !== 'shell') {
+      this.#currentExecutionPromise.then(() => {
+        this.#updateAction(actionId, { status: 'running' });
+      });
+    }
   }
 
   async runAction(data: ActionCallbackData) {
@@ -113,6 +120,16 @@ export class ActionRunner {
       .catch((error) => {
         console.error('Action failed:', error);
       });
+  }
+
+  abortAllActions() {
+    const actions = this.actions.get();
+
+    for (const action of Object.values(actions)) {
+      if (action.status === 'running' || action.status === 'pending') {
+        action.abort();
+      }
+    }
   }
 
   async #executeAction(actionId: string) {
@@ -188,7 +205,16 @@ export class ActionRunner {
 
     const webcontainer = await this.#webcontainer;
 
-    let folder = nodePath.dirname(action.filePath);
+    // guard against path traversal: only relative paths that stay inside the webcontainer workdir are allowed
+    const filePath = nodePath.normalize(action.filePath);
+
+    if (nodePath.isAbsolute(filePath) || filePath.split(/[\\/]+/).includes('..')) {
+      logger.error(`Skipping file action with unsafe file path: ${action.filePath}`);
+
+      return;
+    }
+
+    let folder = nodePath.dirname(filePath);
 
     // remove trailing slashes
     folder = folder.replace(/\/+$/g, '');
@@ -203,8 +229,8 @@ export class ActionRunner {
     }
 
     try {
-      await webcontainer.fs.writeFile(action.filePath, action.content);
-      logger.debug(`File written ${action.filePath}`);
+      await webcontainer.fs.writeFile(filePath, action.content);
+      logger.debug(`File written ${filePath}`);
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
     }
