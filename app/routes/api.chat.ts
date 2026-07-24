@@ -1,15 +1,35 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
+import { getAuth } from '@clerk/remix/ssr.server';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 
+const MAX_MESSAGES = 100;
+const MAX_MESSAGES_TOTAL_LENGTH = 200_000;
+
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
 }
 
-async function chatAction({ context, request }: ActionFunctionArgs) {
+async function chatAction(args: ActionFunctionArgs) {
+  const { context, request } = args;
+
+  const userId = await resolveUserId(args);
+
+  if (!userId) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const { messages } = await request.json<{ messages: Messages }>();
+
+  if (!Array.isArray(messages)) {
+    return new Response('Bad Request', { status: 400 });
+  }
+
+  if (messages.length > MAX_MESSAGES || JSON.stringify(messages).length > MAX_MESSAGES_TOTAL_LENGTH) {
+    return new Response('Payload Too Large', { status: 413 });
+  }
 
   const stream = new SwitchableStream();
 
@@ -56,4 +76,24 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       statusText: 'Internal Server Error',
     });
   }
+}
+
+/**
+ * Mirrors the auth gate used by api.chats.ts: resolves the authenticated
+ * Clerk user with the secret key from the Cloudflare env. Returns null when
+ * auth is not configured or the visitor is signed out.
+ */
+async function resolveUserId(args: ActionFunctionArgs): Promise<string | null> {
+  const env = args.context.cloudflare.env;
+
+  const publishableKey = env.CLERK_PUBLISHABLE_KEY;
+  const secretKey = env.CLERK_SECRET_KEY;
+
+  if (!publishableKey || !secretKey) {
+    return null;
+  }
+
+  const { userId } = await getAuth(args, { secretKey });
+
+  return userId;
 }
