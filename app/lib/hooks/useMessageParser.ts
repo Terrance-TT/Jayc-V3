@@ -38,6 +38,15 @@ const messageParser = new StreamingMessageParser({
          */
         workbenchStore.addAction(data);
 
+        /**
+         * Auto-run dev server commands — they need to start for the preview
+         * iframe to have something to display. Destructive commands (rm,
+         * curl | sh, etc.) still require manual confirmation.
+         */
+        if (/\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|preview)\b/.test(data.action.content)) {
+          workbenchStore.runAction(data);
+        }
+
         return;
       }
 
@@ -64,7 +73,7 @@ export function useMessageParser() {
         setParsedMessages((prevParsed) => ({
           ...prevParsed,
           [index]: !reset ? (prevParsed[index] || '') + newParsedContent : newParsedContent,
-        }));
+        ));
       }
     }
   }, []);
