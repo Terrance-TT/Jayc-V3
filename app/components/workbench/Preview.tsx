@@ -107,7 +107,7 @@ export const Preview = memo(() => {
             setActivePreviewIndex={setActivePreviewIndex}
             isDropdownOpen={isPortDropdownOpen}
             setHasSelectedPreview={(value) => (hasSelectedPreview.current = value)}
-            setIsDropdownOpen={setIsDropdownOpen}
+            setIsDropdownOpen={setIsPortDropdownOpen}
             previews={previews}
           />
         )}
