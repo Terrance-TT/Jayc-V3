@@ -1,6 +1,7 @@
 import { streamText as _streamText, convertToCoreMessages } from 'ai';
 import { getAPIKey } from '~/lib/.server/llm/api-key';
 import { getMoonshotModel } from '~/lib/.server/llm/model';
+import { WORK_DIR } from '~/utils/constants';
 import { MAX_TOKENS } from './constants';
 import { getSystemPrompt } from './prompts';
 
@@ -21,10 +22,10 @@ export type Messages = Message[];
 
 export type StreamingOptions = Omit<Parameters<typeof _streamText>[0], 'model'>;
 
-export function streamText(messages: Messages, env: Env, options?: StreamingOptions) {
+export function streamText(messages: Messages, env: Env, options?: StreamingOptions, projectGraph?: string) {
   return _streamText({
     model: getMoonshotModel(getAPIKey(env), env),
-    system: getSystemPrompt(),
+    system: getSystemPrompt(WORK_DIR, projectGraph),
     maxTokens: MAX_TOKENS,
     temperature: 1, // Kimi K3 requires temperature=1
     messages: convertToCoreMessages(messages),

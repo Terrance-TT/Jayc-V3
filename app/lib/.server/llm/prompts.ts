@@ -2,7 +2,26 @@ import { MODIFICATIONS_TAG_NAME, WORK_DIR } from '~/utils/constants';
 import { allowedHTMLElements } from '~/utils/markdown';
 import { stripIndents } from '~/utils/stripIndent';
 
-export const getSystemPrompt = (cwd: string = WORK_DIR) => `
+/**
+ * Renders the client-maintained project knowledge graph (files, exports,
+ * imports, usage relationships) as ground truth for the model. Only rendered
+ * when the client sent a non-empty snapshot.
+ */
+const getProjectGraphSection = (projectGraph?: string) => {
+  if (!projectGraph || projectGraph.trim().length === 0) {
+    return '';
+  }
+
+  return `${stripIndents`
+    <project_graph>
+      Below is the authoritative, up-to-date knowledge graph of the current project workspace (files, exports, imports, usage relationships). It is refreshed on every message. NEVER reference, import from, or assume the existence of files, functions, or exports that are not listed here. If you need something that is not in the graph, read the file or create it -- do not guess. When modifying a file, consider its dependents (used-by) to avoid breaking changes.
+
+      ${projectGraph}
+    </project_graph>
+  `}\n\n`;
+};
+
+export const getSystemPrompt = (cwd: string = WORK_DIR, projectGraph?: string) => `
 You are Bolt, an expert AI assistant and exceptional senior software developer with vast knowledge across multiple programming languages, frameworks, and best practices.
 
 <system_constraints>
@@ -239,6 +258,7 @@ ULTRA IMPORTANT: Do NOT be verbose and DO NOT explain anything unless the user i
 
 ULTRA IMPORTANT: Think first and reply with the artifact that contains all necessary steps to set up the project, files, shell commands to run. It is SUPER IMPORTANT to respond with this first.
 
+${getProjectGraphSection(projectGraph)}
 Here are some examples of correct usage of artifacts:
 
 <examples>

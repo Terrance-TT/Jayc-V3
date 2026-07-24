@@ -7,6 +7,7 @@ import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 
 const MAX_MESSAGES = 100;
 const MAX_MESSAGES_TOTAL_LENGTH = 200_000;
+const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -21,13 +22,24 @@ async function chatAction(args: ActionFunctionArgs) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const { messages } = await request.json<{ messages: Messages }>();
+  const body = await request.json<{ messages: Messages; projectGraph?: unknown }>();
+  const { messages } = body;
+
+  // server-side validation: a non-string or oversized graph snapshot is
+  // ignored instead of being trusted blindly
+  const projectGraph =
+    typeof body.projectGraph === 'string' && body.projectGraph.length <= MAX_PROJECT_GRAPH_LENGTH
+      ? body.projectGraph
+      : undefined;
 
   if (!Array.isArray(messages)) {
     return new Response('Bad Request', { status: 400 });
   }
 
-  if (messages.length > MAX_MESSAGES || JSON.stringify(messages).length > MAX_MESSAGES_TOTAL_LENGTH) {
+  if (
+    messages.length > MAX_MESSAGES ||
+    JSON.stringify(messages).length + (projectGraph?.length ?? 0) > MAX_MESSAGES_TOTAL_LENGTH
+  ) {
     return new Response('Payload Too Large', { status: 413 });
   }
 
@@ -52,13 +64,13 @@ async function chatAction(args: ActionFunctionArgs) {
         messages.push({ role: 'assistant', content });
         messages.push({ role: 'user', content: CONTINUE_PROMPT });
 
-        const result = await streamText(messages, context.cloudflare.env, options);
+        const result = await streamText(messages, context.cloudflare.env, options, projectGraph);
 
         return stream.switchSource(result.toAIStream());
       },
     };
 
-    const result = await streamText(messages, context.cloudflare.env, options);
+    const result = await streamText(messages, context.cloudflare.env, options, projectGraph);
 
     stream.switchSource(result.toAIStream());
 
