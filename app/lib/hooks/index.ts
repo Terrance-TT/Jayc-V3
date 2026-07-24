@@ -1,3 +1,4 @@
+export * from './useErrorFeedback';
 export * from './useMessageParser';
 export * from './usePromptEnhancer';
 export * from './useShortcuts';
