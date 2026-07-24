@@ -131,14 +131,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     const textarea = textareaRef.current;
 
     if (textarea) {
-      textarea.style.height = 'auto';
-
-      const scrollHeight = textarea.scrollHeight;
-
-      textarea.style.height = `${Math.min(scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
-      textarea.style.overflowY = scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
+      textarea.scrollTop = textarea.scrollHeight;
     }
-  }, [input, textareaRef]);
+  };
 
   const abort = () => {
     stop();
@@ -157,7 +152,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       textarea.style.height = `${Math.min(scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
       textarea.style.overflowY = scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
     }
-  }, [input]);
+  }, [input, textareaRef]);
 
   const runAnimation = async () => {
     if (chatStarted) {
