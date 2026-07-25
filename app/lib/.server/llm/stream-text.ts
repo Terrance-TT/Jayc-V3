@@ -24,9 +24,15 @@ export type Messages = Message[];
 export type StreamingOptions = Omit<Parameters<typeof _streamText>[0], 'model'>;
 
 export function streamText(messages: Messages, env: Env, options?: StreamingOptions, projectGraph?: string) {
+  // User-facing assistant branding stays aligned with the app name; internal artifact tags stay unchanged.
+  const system = getSystemPrompt(WORK_DIR, projectGraph)
+    .replace('You are Bolt,', 'You are Jayc,')
+    .replace('Bolt creates a SINGLE', 'Jayc creates a SINGLE')
+    .replace("console.log('Hello, Bolt!')", "console.log('Hello, Jayc!')");
+
   return _streamText({
     model: getMoonshotModel(getAPIKey(env), env),
-    system: getSystemPrompt(WORK_DIR, projectGraph),
+    system,
     maxTokens: MAX_TOKENS,
     temperature: 1, // Kimi K3 requires temperature=1
 
