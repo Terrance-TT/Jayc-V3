@@ -19,7 +19,15 @@ async function chatAction(args: ActionFunctionArgs) {
   const userId = await resolveUserId(args);
 
   if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
+    // JSON body (instead of bare text) so the client can explain why the
+    // request failed and send the user to the sign-in page.
+    return new Response(
+      JSON.stringify({
+        error: 'auth_required',
+        message: 'Please sign in to use the AI builder. Your chats are saved to your account.',
+      }),
+      { status: 401, headers: { 'content-type': 'application/json' } },
+    );
   }
 
   const body = await request.json<{ messages: Messages; projectGraph?: unknown }>();
