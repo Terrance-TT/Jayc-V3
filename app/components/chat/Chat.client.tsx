@@ -7,7 +7,7 @@ import { useAnimate } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { getGraphSnapshot, initGraphify } from '~/lib/graphify';
-import { useErrorFeedback, useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
+import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
@@ -185,24 +185,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
   const { parsedMessages, parseMessages } = useMessageParser();
-
-  /**
-   * Self-healing loop: when a shell command or file write fails at runtime,
-   * the ErrorMonitorStore (bridged by useErrorFeedback) automatically asks
-   * the model to fix it. Identical errors are deduplicated in the store and
-   * the hook enforces a cooldown, so this cannot loop forever.
-   */
-  useErrorFeedback({
-    isLoading,
-    sendFixRequest: (message) => {
-      toast.info('Detected a runtime error — asking the AI to fix it');
-
-      // attach the graph snapshot like sendMessage does (field omitted when empty)
-      const projectGraph = getGraphSnapshot();
-
-      append({ role: 'user', content: message }, { body: projectGraph ? { projectGraph } : {} });
-    },
-  });
 
   const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
 
