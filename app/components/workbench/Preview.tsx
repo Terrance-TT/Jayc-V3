@@ -1,5 +1,6 @@
 import { useStore } from '@nanostores/react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import { IconButton } from '~/components/ui/IconButton';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { PortDropdown } from './PortDropdown';
@@ -72,8 +73,30 @@ export const Preview = memo(() => {
   };
 
   const openInNewTab = () => {
-    if (iframeUrl) {
-      window.open(iframeUrl, '_blank', 'noopener,noreferrer');
+    if (!iframeUrl) {
+      return;
+    }
+
+    /**
+     * No noopener/noreferrer on purpose: WebContainer preview URLs are bound
+     * to this editor session, and the new tab reconnects to it through the
+     * window.opener channel. Severing that channel leaves the new tab dead
+     * (404). The preview URL is our own container origin, so keeping the
+     * opener is safe here.
+     */
+    const newTab = window.open(iframeUrl, '_blank');
+
+    if (newTab) {
+      toast.info(
+        'Preview opened in a new tab — keep this tab open or the link stops working. ' +
+          'If the new tab shows an error, allow pop-ups and turn off third-party cookie blocking for this site, then try again.',
+        { autoClose: 10000 },
+      );
+    } else {
+      toast.error(
+        'Your browser blocked the new tab. Allow pop-ups for this site, then try again.',
+        { autoClose: 10000 },
+      );
     }
   };
 
@@ -86,7 +109,7 @@ export const Preview = memo(() => {
         <IconButton icon="i-ph:arrow-clockwise" title="Reload preview" onClick={reloadPreview} />
         <IconButton
           icon="i-ph:arrow-square-out"
-          title="Open preview in new tab"
+          title="Open preview in new tab (keep this tab open)"
           disabled={!iframeUrl}
           onClick={openInNewTab}
         />
