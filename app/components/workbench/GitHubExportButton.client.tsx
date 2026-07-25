@@ -138,10 +138,42 @@ export const GitHubExportButton = memo(() => {
                 Private repository
               </label>
 
+              <div className="text-xs text-bolt-elements-textTertiary">
+                Tip: keep secrets out of git — a .gitignore covering .env is added automatically to your export.
+              </div>
+
               {fileStats.hasEnvFile && (
-                <div className="rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2 text-xs text-bolt-elements-textSecondary">
-                  Warning: this project contains a .env file. It may hold secrets — double-check before exporting to a
-                  public repository.
+                <div className="rounded-md border-2 border-red-500 bg-bolt-elements-background-depth-2 px-4 py-3">
+                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-red-500">
+                    <div className="i-ph:warning text-xl" />
+                    IMPORTANT — READ BEFORE EXPORTING
+                  </div>
+                  <div className="text-sm text-bolt-elements-textSecondary">
+                    This export uploads ALL project files to GitHub exactly as they are — including any .env files
+                    containing your secret API keys.
+                  </div>
+                  <ul className="mt-2 list-disc pl-5 text-sm text-bolt-elements-textSecondary">
+                    <li>For LOCAL development, it is safe to hardcode secrets in a .env file.</li>
+                    <li>
+                      If you want to PUBLISH your project on the web, do NOT rely on .env files — store your secrets in
+                      your hosting platform's environment variable settings (e.g. your Cloudflare / Netlify / Vercel
+                      dashboard).
+                    </li>
+                    <li>
+                      If your repository is PUBLIC, anyone on the internet can see and steal your keys. You are
+                      responsible for any charges or misuse that result.
+                    </li>
+                  </ul>
+                  <div className="mt-2 text-sm font-bold text-bolt-elements-textPrimary">
+                    By exporting, you acknowledge this and accept full responsibility for any secrets included in the
+                    export.
+                  </div>
+                  <div className="mt-2 text-xs text-bolt-elements-textTertiary">
+                    Questions? Email{' '}
+                    <a className="text-bolt-elements-item-contentAccent underline" href="mailto:yungyungadam@gmail.com">
+                      yungyungadam@gmail.com
+                    </a>
+                  </div>
                 </div>
               )}
 
