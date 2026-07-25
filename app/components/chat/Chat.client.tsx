@@ -23,6 +23,13 @@ const toastAnimation = cssTransition({
 
 const logger = createScopedLogger('Chat');
 
+/**
+ * Headroom under the 800_000-character server cap in api.chat.ts (which also
+ * counts the project graph snapshot). Long build sessions are trimmed to fit
+ * this budget instead of hard-failing with a 413.
+ */
+const MAX_OUTGOING_MESSAGES_LENGTH = 700_000;
+
 interface RootLoaderData {
   clerkState?: unknown;
 }
@@ -54,6 +61,42 @@ function handleAuthRequired(message?: string) {
   toast.error(message ?? 'Please sign in to use the AI builder. Your chats are saved to your account.');
 
   clerkSignInRedirect?.();
+}
+
+/**
+ * Returns a copy of the history with the oldest non-system messages dropped
+ * until the next request (history + the message about to be sent + the
+ * project graph snapshot) fits the client-side budget, or null when nothing
+ * needs to be trimmed. The very first user message carries the original
+ * project description and is always kept, as are the most recent messages.
+ */
+function trimMessagesToBudget(
+  messages: Message[],
+  newMessageContent: string,
+  projectGraphLength: number,
+): Message[] | null {
+  const newMessage = { role: 'user', content: newMessageContent };
+
+  if (JSON.stringify([...messages, newMessage]).length + projectGraphLength <= MAX_OUTGOING_MESSAGES_LENGTH) {
+    return null;
+  }
+
+  const firstUserMessage = messages.find((message) => message.role === 'user');
+
+  const trimmed = [...messages];
+
+  while (JSON.stringify([...trimmed, newMessage]).length + projectGraphLength > MAX_OUTGOING_MESSAGES_LENGTH) {
+    // drop the oldest message that is neither a system message nor the first user message
+    const dropIndex = trimmed.findIndex((message) => message.role !== 'system' && message !== firstUserMessage);
+
+    if (dropIndex === -1) {
+      break;
+    }
+
+    trimmed.splice(dropIndex, 1);
+  }
+
+  return trimmed.length === messages.length ? null : trimmed;
 }
 
 export function Chat() {
@@ -114,7 +157,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [animationScope, animate] = useAnimate();
 
-  const { messages, isLoading, input, handleInputChange, setInput, stop, append } = useChat({
+  const { messages, isLoading, input, handleInputChange, setInput, stop, append, setMessages } = useChat({
     api: '/api/chat',
     onResponse: (response) => {
       if (response.status === 401) {
@@ -247,9 +290,26 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     const projectGraph = getGraphSnapshot();
     const body = projectGraph ? { projectGraph } : {};
 
-    if (fileModifications !== undefined) {
-      const diff = fileModificationsToHTML(fileModifications);
+    const newMessageContent =
+      fileModifications !== undefined ? `${fileModificationsToHTML(fileModifications)}\n\n${_input}` : _input;
 
+    /**
+     * Keep the outgoing request below the server-side size cap so long sessions
+     * do not hard-fail with a 413: drop the oldest non-system messages first,
+     * but always keep the very first user message (the original project
+     * description) and the most recent messages. `setMessages` updates the
+     * chat state synchronously, so the trimmed history is what `append` sends.
+     */
+    const trimmedMessages = trimMessagesToBudget(messages, newMessageContent, projectGraph?.length ?? 0);
+
+    if (trimmedMessages) {
+      setMessages(trimmedMessages);
+      toast.info(
+        'This chat got long — oldest messages were trimmed so the AI can keep working. For best results, start a fresh chat for new features.',
+      );
+    }
+
+    if (fileModifications !== undefined) {
       /**
        * If we have file modifications we append a new user message manually since we have to prefix
        * the user input with the file modifications and we don't want the new user input to appear
@@ -257,7 +317,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
        * manually reset the input and we'd have to manually pass in file attachments. However, those
        * aren't relevant here.
        */
-      append({ role: 'user', content: `${diff}\n\n${_input}` }, { body });
+      append({ role: 'user', content: newMessageContent }, { body });
 
       /**
        * After sending a new message we reset all modifications since the model
@@ -265,7 +325,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
        */
       workbenchStore.resetAllFileModifications();
     } else {
-      append({ role: 'user', content: _input }, { body });
+      append({ role: 'user', content: newMessageContent }, { body });
     }
 
     setInput('');
