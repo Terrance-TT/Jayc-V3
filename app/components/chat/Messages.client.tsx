@@ -48,6 +48,20 @@ export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: 
       {isStreaming && (
         <div className="text-center w-full text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl mt-4"></div>
       )}
+      {!isStreaming && messages.length > 0 && (
+        <div className="flex justify-center mt-4 mb-2">
+          <a
+            href="https://patreon.com/Jayc721?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                       bg-[#ecd386] text-[#323232] hover:bg-[#e0c76e] transition-colors shadow-sm"
+          >
+            <div className="i-ph:heart-fill" />
+            Support Jayc on Patreon
+          </a>
+        </div>
+      )}
     </div>
   );
 });
