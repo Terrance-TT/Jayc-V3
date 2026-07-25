@@ -104,8 +104,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 })}
               >
                 {!chatStarted && (
-                  <div className="mb-3 px-4 py-2.5 rounded-lg border border-[#5ba8a6]/30 bg-[#5ba8a6]/10 text-sm text-[#5ba8a6] text-center">
-                    Sign in to start building. Jayc uses modular architecture to generate maintainable, production-ready code.
+                  <div className="mb-4 flex flex-col items-center gap-3">
+                    <div className="flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-[#4d69a5]/40 bg-[#4d69a5]/10 text-[#4d69a5] text-center">
+                      <div className="i-ph:lock-key-fill text-lg" />
+                      <span className="text-sm font-medium">Sign in required to generate code</span>
+                    </div>
+                    <p className="text-xs text-bolt-elements-textTertiary text-center max-w-sm">
+                      Jayc uses modular architecture to generate maintainable, production-ready code.
+                    </p>
                   </div>
                 )}
                 <div
