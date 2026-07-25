@@ -5,8 +5,8 @@ import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 
-const MAX_MESSAGES = 100;
-const MAX_MESSAGES_TOTAL_LENGTH = 200_000;
+const MAX_MESSAGES = 200;
+const MAX_MESSAGES_TOTAL_LENGTH = 800_000;
 const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 
 export async function action(args: ActionFunctionArgs) {
