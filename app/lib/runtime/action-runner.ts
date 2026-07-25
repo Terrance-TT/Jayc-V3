@@ -1,7 +1,6 @@
 import { WebContainer } from '@webcontainer/api';
 import { map, type MapStore } from 'nanostores';
 import * as nodePath from 'node:path';
-import { errorMonitorStore } from '~/lib/stores/error-monitor';
 import type { BoltAction } from '~/types/actions';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
@@ -33,9 +32,6 @@ export type ActionStateUpdate =
   | (Omit<BaseActionUpdate, 'status'> & { status: 'failed'; error: string });
 
 type ActionsMap = MapStore<Record<string, ActionState>>;
-
-/** how much of a command's output tail is kept for error reports */
-const OUTPUT_BUFFER_LIMIT = 4000;
 
 /**
  * Patterns that match commands which start a long-running process (dev servers,
@@ -200,14 +196,10 @@ export class ActionRunner {
       process.kill();
     });
 
-    // keep a rolling tail of the output so failures can be reported with context
-    let outputBuffer = '';
-
     process.output.pipeTo(
       new WritableStream({
         write(data) {
           console.log(data);
-          outputBuffer = (outputBuffer + data).slice(-OUTPUT_BUFFER_LIMIT);
         },
       }),
     );
@@ -218,22 +210,8 @@ export class ActionRunner {
        * Awaiting `process.exit` here would block the action queue forever, so
        * we keep streaming output in the background and return immediately,
        * allowing subsequent actions (file writes, installs, etc.) to run.
-       *
-       * If the process DOES exit later with a non-zero code (e.g. the dev
-       * server crashed at startup), report it to the error monitor so the
-       * self-healing loop can pick it up.
        */
       logger.debug('Detected long-running command, not awaiting exit:', action.content);
-
-      process.exit.then((exitCode) => {
-        if (exitCode !== 0 && !action.abortSignal.aborted) {
-          errorMonitorStore.reportError({
-            source: 'shell',
-            title: `Command failed: ${action.content}`,
-            detail: `The dev server / watch process exited with code ${exitCode}.\n\nOutput:\n${outputBuffer}`,
-          });
-        }
-      });
 
       return;
     }
@@ -243,12 +221,6 @@ export class ActionRunner {
     logger.debug(`Process terminated with code ${exitCode}`);
 
     if (exitCode !== 0 && !action.abortSignal.aborted) {
-      errorMonitorStore.reportError({
-        source: 'shell',
-        title: `Command failed: ${action.content}`,
-        detail: `The command exited with code ${exitCode}.\n\nOutput:\n${outputBuffer}`,
-      });
-
       throw new Error(`Command exited with code ${exitCode}`);
     }
   }
@@ -263,7 +235,7 @@ export class ActionRunner {
     // guard against path traversal: only relative paths that stay inside the webcontainer workdir are allowed
     const filePath = nodePath.normalize(action.filePath);
 
-    if (nodePath.isAbsolute(filePath) || filePath.split(/[\\/]+/).includes('..')) {
+    if (nodePath.isAbsolute(filePath) || filePath.split(/[\/]+/).includes('..')) {
       logger.error(`Skipping file action with unsafe file path: ${action.filePath}`);
 
       return;
@@ -288,12 +260,6 @@ export class ActionRunner {
       logger.debug(`File written ${filePath}`);
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
-
-      errorMonitorStore.reportError({
-        source: 'file-write',
-        title: `Failed to write file: ${filePath}`,
-        detail: error instanceof Error ? error.message : String(error),
-      });
 
       throw error;
     }
