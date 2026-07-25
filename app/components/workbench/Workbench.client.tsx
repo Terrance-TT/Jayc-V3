@@ -15,6 +15,7 @@ import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
 import { renderLogger } from '~/utils/logger';
 import { EditorPanel } from './EditorPanel';
+import { GitHubExportButton } from './GitHubExportButton.client';
 import { Preview } from './Preview';
 
 interface WorkspaceProps {
@@ -121,6 +122,7 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
               <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
                 <Slider selected={selectedView} options={sliderOptions} setSelected={setSelectedView} />
                 <div className="ml-auto" />
+                <GitHubExportButton />
                 {selectedView === 'code' && (
                   <PanelHeaderButton
                     className="mr-1 text-sm"
