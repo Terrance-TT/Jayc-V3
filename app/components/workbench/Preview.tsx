@@ -78,25 +78,21 @@ export const Preview = memo(() => {
     }
 
     /**
-     * No noopener/noreferrer on purpose: WebContainer preview URLs are bound
-     * to this editor session, and the new tab reconnects to it through the
-     * window.opener channel. Severing that channel leaves the new tab dead
-     * (404). The preview URL is our own container origin, so keeping the
-     * opener is safe here.
+     * WebContainer preview URLs only load inside an iframe embedded in a Jayc
+     * page — opened as a top-level tab they 404 or break on third-party
+     * cookie settings. So the new tab opens our own /preview wrapper route
+     * (first-party on our origin) which embeds the container URL full-screen.
      */
-    const newTab = window.open(iframeUrl, '_blank');
+    const newTab = window.open(`/preview?u=${encodeURIComponent(iframeUrl)}`, '_blank');
 
     if (newTab) {
-      toast.info(
-        'Preview opened in a new tab — keep this tab open or the link stops working. ' +
-          'If the new tab shows an error, allow pop-ups and turn off third-party cookie blocking for this site, then try again.',
-        { autoClose: 10000 },
-      );
+      toast.info('Preview opened in a new tab — keep this tab open or the preview stops working.', {
+        autoClose: 8000,
+      });
     } else {
-      toast.error(
-        'Your browser blocked the new tab. Allow pop-ups for this site, then try again.',
-        { autoClose: 10000 },
-      );
+      toast.error('Your browser blocked the new tab. Allow pop-ups for this site, then try again.', {
+        autoClose: 10000,
+      });
     }
   };
 
