@@ -96,6 +96,29 @@ export const Preview = memo(() => {
     }
   };
 
+  const copyPreviewLink = async () => {
+    if (!iframeUrl) {
+      return;
+    }
+
+    /**
+     * Copy the same-origin wrapper link (not the raw container URL) so the
+     * recipient gets the first-party page that embeds the preview — the same
+     * mechanism as "open in new tab". The link only stays alive while this
+     * editor tab is open, since the app runs in this browser.
+     */
+    const shareUrl = `${window.location.origin}/preview?u=${encodeURIComponent(iframeUrl)}`;
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Preview link copied! It stays live only while this tab is open.', { autoClose: 8000 });
+    } catch {
+      toast.error('Could not copy the link — copy it from the address bar after opening in a new tab instead.', {
+        autoClose: 10000,
+      });
+    }
+  };
+
   return (
     <div className="w-full h-full flex flex-col">
       {isPortDropdownOpen && (
@@ -108,6 +131,12 @@ export const Preview = memo(() => {
           title="Open preview in new tab (keep this tab open)"
           disabled={!iframeUrl}
           onClick={openInNewTab}
+        />
+        <IconButton
+          icon="i-ph:link"
+          title="Copy preview link (live while this tab is open)"
+          disabled={!iframeUrl}
+          onClick={copyPreviewLink}
         />
         <div
           className="flex items-center gap-1 flex-grow bg-bolt-elements-preview-addressBar-background border border-bolt-elements-borderColor text-bolt-elements-preview-addressBar-text rounded-full px-3 py-1 text-sm hover:bg-bolt-elements-preview-addressBar-backgroundHover hover:focus-within:bg-bolt-elements-preview-addressBar-backgroundActive focus-within:bg-bolt-elements-preview-addressBar-backgroundActive
