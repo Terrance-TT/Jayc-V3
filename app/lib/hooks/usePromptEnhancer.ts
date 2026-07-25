@@ -12,7 +12,11 @@ export function usePromptEnhancer() {
     setPromptEnhanced(false);
   };
 
-  const enhancePrompt = async (input: string, setInput: (value: string) => void) => {
+  const enhancePrompt = async (
+    input: string,
+    setInput: (value: string) => void,
+    onAuthRequired?: (message?: string) => void,
+  ) => {
     setEnhancingPrompt(true);
     setPromptEnhanced(false);
 
@@ -22,6 +26,25 @@ export function usePromptEnhancer() {
         message: input,
       }),
     });
+
+    // signed-out visitors get a JSON 401 — hand the message to the caller so
+    // it can explain why and send the user to the sign-in page.
+    if (response.status === 401) {
+      setEnhancingPrompt(false);
+
+      let message: string | undefined;
+
+      try {
+        const body = await response.json<{ message?: string }>();
+        message = body?.message;
+      } catch (error) {
+        logger.error('Failed to parse 401 response', error);
+      }
+
+      onAuthRequired?.(message);
+
+      return;
+    }
 
     const reader = response.body?.getReader();
 

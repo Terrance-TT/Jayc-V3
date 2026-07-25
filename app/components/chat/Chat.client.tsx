@@ -1,4 +1,6 @@
 import { useStore } from '@nanostores/react';
+import { useRouteLoaderData } from '@remix-run/react';
+import { useClerk } from '@clerk/remix';
 import type { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { useAnimate } from 'framer-motion';
@@ -21,14 +23,50 @@ const toastAnimation = cssTransition({
 
 const logger = createScopedLogger('Chat');
 
+interface RootLoaderData {
+  clerkState?: unknown;
+}
+
+/**
+ * The API routes answer signed-out requests with a JSON 401. Clerk's
+ * redirectToSignIn is only callable under ClerkProvider, so this bridge
+ * (rendered only when the root loader provided Clerk state) captures it for
+ * the fetch handlers below. Clerk sends the user to the sign-in page and
+ * back to the current page after they sign in.
+ */
+let clerkSignInRedirect: (() => void) | undefined;
+
+function ClerkSignInBridge() {
+  const { redirectToSignIn } = useClerk();
+
+  useEffect(() => {
+    clerkSignInRedirect = () => redirectToSignIn();
+
+    return () => {
+      clerkSignInRedirect = undefined;
+    };
+  }, [redirectToSignIn]);
+
+  return null;
+}
+
+function handleAuthRequired(message?: string) {
+  toast.error(message ?? 'Please sign in to use the AI builder. Your chats are saved to your account.');
+
+  clerkSignInRedirect?.();
+}
+
 export function Chat() {
   renderLogger.trace('Chat');
 
   const { ready, initialMessages, storeMessageHistory } = useChatHistory();
 
+  const rootData = useRouteLoaderData<RootLoaderData>('root');
+
   return (
     <>
       {ready && <ChatImpl initialMessages={initialMessages} storeMessageHistory={storeMessageHistory} />}
+      {rootData?.clerkState && <ClerkSignInBridge />}
       <ToastContainer
         closeButton={({ closeToast }) => {
           return (
@@ -78,7 +116,21 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const { messages, isLoading, input, handleInputChange, setInput, stop, append } = useChat({
     api: '/api/chat',
+    onResponse: (response) => {
+      if (response.status === 401) {
+        response
+          .clone()
+          .json<{ message?: string }>()
+          .then((body) => handleAuthRequired(body?.message))
+          .catch(() => handleAuthRequired());
+      }
+    },
     onError: (error) => {
+      // 401s are already handled in onResponse with a sign-in redirect.
+      if (error.message.includes('auth_required')) {
+        return;
+      }
+
       logger.error('Request failed\n\n', error);
       toast.error('There was an error processing your request');
     },
@@ -251,10 +303,14 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
         };
       })}
       enhancePrompt={() => {
-        enhancePrompt(input, (input) => {
-          setInput(input);
-          scrollTextArea();
-        });
+        enhancePrompt(
+          input,
+          (input) => {
+            setInput(input);
+            scrollTextArea();
+          },
+          handleAuthRequired,
+        );
       }}
     />
   );
