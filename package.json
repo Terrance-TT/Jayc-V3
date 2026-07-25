@@ -1,6 +1,6 @@
 {
-  "name": "jayc",
-  "description": "Jayc AI Agent",
+  "name": "bolt",
+  "description": "StackBlitz AI Agent",
   "private": true,
   "license": "MIT",
   "packageManager": "pnpm@9.4.0",
