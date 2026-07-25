@@ -97,6 +97,7 @@ interface GitHubUser {
 
 interface GitHubRepo {
   html_url: string;
+  default_branch: string;
 }
 
 interface GitHubRef {
@@ -155,7 +156,7 @@ function buildTreeEntries(files: FileMap): { entries: TreeEntry[]; skippedBinary
  * Exports every file in the workbench to a GitHub repository.
  *
  * Creates the repo when it doesn't exist yet; otherwise pushes a new commit
- * on top of the existing `main` branch. Files present in the repo but absent
+ * on top of the existing default branch. Files present in the repo but absent
  * from the workbench are left untouched when updating.
  */
 export async function exportProjectToGitHub(options: GitHubExportOptions): Promise<GitHubExportResult> {
@@ -172,21 +173,19 @@ export async function exportProjectToGitHub(options: GitHubExportOptions): Promi
   const user = await githubFetch<GitHubUser>(token, '/user');
   const owner = user.login;
 
-  // 2. create the repo, or fall back to updating an existing one
-  let repoUrl = `https://github.com/${owner}/${repo}`;
+  /** 2. Create the repo with an initial commit, or fall back to updating an existing one on name clash */
   let updatedExisting = false;
 
   try {
-    const created = await githubFetch<GitHubRepo>(token, '/user/repos', {
+    await githubFetch<GitHubRepo>(token, '/user/repos', {
       method: 'POST',
       body: JSON.stringify({
         name: repo,
         private: isPrivate,
         description: 'Built with Jayc',
-        auto_init: false,
+        auto_init: true,
       }),
     });
-    repoUrl = created.html_url;
   } catch (error) {
     if (error instanceof GitHubApiError && error.status === 422) {
       // repo name already exists on this account — update it instead
@@ -196,18 +195,34 @@ export async function exportProjectToGitHub(options: GitHubExportOptions): Promi
     }
   }
 
-  // 3. look up the current main branch (absent on a fresh repo)
+  // 3. find the default branch and its latest commit
+  const repoInfo = await githubFetch<GitHubRepo>(token, `/repos/${owner}/${repo}`);
+  const branch = repoInfo.default_branch || 'main';
+  const repoUrl = repoInfo.html_url;
+
   let parentCommitSha: string | undefined;
   let baseTreeSha: string | undefined;
 
-  try {
-    const ref = await githubFetch<GitHubRef>(token, `/repos/${owner}/${repo}/git/ref/heads/main`);
+  const readHeadCommit = async () => {
+    const ref = await githubFetch<GitHubRef>(token, `/repos/${owner}/${repo}/git/ref/heads/${branch}`);
     const commit = await githubFetch<GitHubCommit>(token, `/repos/${owner}/${repo}/git/commits/${ref.object.sha}`);
     parentCommitSha = commit.sha;
     baseTreeSha = commit.tree.sha;
+  };
+
+  try {
+    await readHeadCommit();
   } catch (error) {
     if (error instanceof GitHubApiError && (error.status === 404 || error.status === 409)) {
-      // 404: no main branch yet, 409: repo is empty — both are fine
+      // repo exists but has zero commits (404/409) — seed a readme via the contents api, which works on empty repos
+      await githubFetch(token, `/repos/${owner}/${repo}/contents/README.md`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          message: 'Initial commit',
+          content: btoa(`# ${repo}\n\nBuilt with Jayc\n`),
+        }),
+      });
+      await readHeadCommit();
     } else {
       throw error;
     }
@@ -232,16 +247,16 @@ export async function exportProjectToGitHub(options: GitHubExportOptions): Promi
     }),
   });
 
-  // 6. point main at the new commit
+  // 6. point the branch at the new commit
   if (parentCommitSha) {
-    await githubFetch<GitHubRef>(token, `/repos/${owner}/${repo}/git/refs/heads/main`, {
+    await githubFetch<GitHubRef>(token, `/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
       method: 'PATCH',
       body: JSON.stringify({ sha: commit.sha }),
     });
   } else {
     await githubFetch<GitHubRef>(token, `/repos/${owner}/${repo}/git/refs`, {
       method: 'POST',
-      body: JSON.stringify({ ref: 'refs/heads/main', sha: commit.sha }),
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),
     });
   }
 
