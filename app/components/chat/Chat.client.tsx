@@ -305,7 +305,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     if (trimmedMessages) {
       setMessages(trimmedMessages);
       toast.info(
-        'This chat got long — oldest messages were trimmed so the AI can keep working. For best results, start a fresh chat for new features.',
+        'This chat got long — the oldest messages were trimmed so the AI can keep working on your project. Your files are not affected.',
       );
     }
 
