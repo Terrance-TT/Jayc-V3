@@ -79,18 +79,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 <p className="mb-4 text-center text-bolt-elements-textSecondary">
                   Bring ideas to life in seconds or get help on existing projects.
                 </p>
-                <div className="flex justify-center gap-4 mb-4">
-                  <a
-                    href="https://patreon.com/Jayc721?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
-                               bg-[#ecd386] text-[#323232] hover:bg-[#e0c76e] transition-colors"
-                  >
-                    <div className="i-ph:heart-fill" />
-                    Support Me on Patreon
-                  </a>
-                </div>
               </div>
             )}
             <div
