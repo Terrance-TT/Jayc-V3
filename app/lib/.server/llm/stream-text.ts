@@ -3,6 +3,7 @@ import { getAPIKey } from '~/lib/.server/llm/api-key';
 import { getMoonshotModel } from '~/lib/.server/llm/model';
 import { WORK_DIR } from '~/utils/constants';
 import { MAX_TOKENS } from './constants';
+import { pruneMessages } from './prune-context';
 import { getSystemPrompt } from './prompts';
 
 interface ToolResult<Name extends string, Args, Result> {
@@ -28,7 +29,11 @@ export function streamText(messages: Messages, env: Env, options?: StreamingOpti
     system: getSystemPrompt(WORK_DIR, projectGraph),
     maxTokens: MAX_TOKENS,
     temperature: 1, // Kimi K3 requires temperature=1
-    messages: convertToCoreMessages(messages),
+
+    // strip superseded file contents from older assistant messages so long
+    // sessions stay small, fast, and free of stale-code confusion (see
+    // prune-context.ts). Displayed/persisted history is unaffected.
+    messages: convertToCoreMessages(pruneMessages(messages)),
     ...options,
   });
 }
