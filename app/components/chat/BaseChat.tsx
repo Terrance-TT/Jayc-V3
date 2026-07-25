@@ -79,6 +79,18 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 <p className="mb-4 text-center text-bolt-elements-textSecondary">
                   Bring ideas to life in seconds or get help on existing projects.
                 </p>
+                <div className="flex justify-center gap-4 mb-4">
+                  <a
+                    href="https://patreon.com/Jayc721?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                               bg-[#ecd386] text-[#323232] hover:bg-[#e0c76e] transition-colors"
+                  >
+                    <div className="i-ph:heart-fill" />
+                    Support Me on Patreon
+                  </a>
+                </div>
               </div>
             )}
             <div
@@ -103,6 +115,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   'sticky bottom-0': chatStarted,
                 })}
               >
+                {!chatStarted && (
+                  <div className="mb-3 px-4 py-2.5 rounded-lg border border-[#5ba8a6]/30 bg-[#5ba8a6]/10 text-sm text-[#5ba8a6] text-center">
+                    Sign in to start building. Jayc uses modular architecture to generate maintainable, production-ready code.
+                  </div>
+                )}
                 <div
                   className={classNames(
                     'shadow-sm border border-bolt-elements-borderColor bg-bolt-elements-prompt-background backdrop-filter backdrop-blur-[8px] rounded-lg overflow-hidden',
@@ -185,7 +202,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               </div>
             </div>
             {!chatStarted && (
-              <div id="examples" className="relative w-full max-w-xl mx-auto mt-8 flex justify-center">
+              <div id="examples" className="relative w-full max-w-xl mx-auto mt-8 flex flex-col items-center">
                 <div className="flex flex-col space-y-2 [mask-image:linear-gradient(to_bottom,black_0%,transparent_180%)] hover:[mask-image:none]">
                   {EXAMPLE_PROMPTS.map((examplePrompt, index) => {
                     return (
@@ -202,6 +219,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     );
                   })}
                 </div>
+                <p className="mt-6 text-xs text-bolt-elements-textTertiary/60 text-center italic">
+                  Jayc is experimental — things might break from time to time, but I am trying my best!
+                </p>
               </div>
             )}
           </div>
