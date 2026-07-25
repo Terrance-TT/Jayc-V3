@@ -71,13 +71,25 @@ export const Preview = memo(() => {
     }
   };
 
+  const openInNewTab = () => {
+    if (iframeUrl) {
+      window.open(iframeUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <div className="w-full h-full flex flex-col">
       {isPortDropdownOpen && (
         <div className="z-iframe-overlay w-full h-full absolute" onClick={() => setIsPortDropdownOpen(false)} />
       )}
       <div className="bg-bolt-elements-background-depth-2 p-2 flex items-center gap-1.5">
-        <IconButton icon="i-ph:arrow-clockwise" onClick={reloadPreview} />
+        <IconButton icon="i-ph:arrow-clockwise" title="Reload preview" onClick={reloadPreview} />
+        <IconButton
+          icon="i-ph:arrow-square-out"
+          title="Open preview in new tab"
+          disabled={!iframeUrl}
+          onClick={openInNewTab}
+        />
         <div
           className="flex items-center gap-1 flex-grow bg-bolt-elements-preview-addressBar-background border border-bolt-elements-borderColor text-bolt-elements-preview-addressBar-text rounded-full px-3 py-1 text-sm hover:bg-bolt-elements-preview-addressBar-backgroundHover hover:focus-within:bg-bolt-elements-preview-addressBar-backgroundActive focus-within:bg-bolt-elements-preview-addressBar-backgroundActive
         focus-within-border-bolt-elements-borderColorActive focus-within:text-bolt-elements-preview-addressBar-textActive"
