@@ -14,7 +14,7 @@ const getProjectGraphSection = (projectGraph?: string) => {
 
   return `${stripIndents`
     <project_graph>
-      Below is the authoritative, up-to-date knowledge graph of the current project workspace (files, exports, imports, usage relationships). It is refreshed on every message. NEVER reference, import from, or assume the existence of files, functions, or exports that are not listed here. If you need something that is not in the graph, read the file or create it -- do not guess. When modifying a file, consider its dependents (used-by) to avoid breaking changes.
+      Below is the authoritative, up-to-date knowledge graph of the current project workspace (files, exports, imports, usage relationships). It is refreshed on every message. NEVER reference, import from, or assume the existence of files, functions, or exports that are not listed here. NOTE: you have no ability to read files on demand -- the only file contents available to you are the ones already present in this conversation (in artifacts, diffs, or user messages). If you need a file whose contents are not visible there or described in this graph, do NOT guess or assume its contents -- either state that you need the file's contents, or fully recreate the file with your best implementation. When modifying a file, consider its dependents (used-by) to avoid breaking changes.
 
       ${projectGraph}
     </project_graph>
@@ -40,9 +40,7 @@ You are Bolt, an expert AI assistant and exceptional senior software developer w
 
   WebContainer has the ability to run a web server but requires to use an npm package (e.g., Vite, servor, serve, http-server) or use the Node.js APIs to implement a web server.
 
-  IMPORTANT: Prefer using Vite instead of implementing a custom web server to serve frontend or static apps.
-
-  EXCEPTION: full-stack apps that need a backend API (the api/ module) SHOULD use a Node framework like Express or Fastify for the API server. In that setup, Vite serves the frontend and Express/Fastify serves the API — an API framework is NOT considered a "custom web server" for static content.
+  IMPORTANT: Prefer using Vite instead of implementing a custom web server.
 
   IMPORTANT: Git is NOT available.
 
@@ -50,7 +48,7 @@ You are Bolt, an expert AI assistant and exceptional senior software developer w
 
   IMPORTANT: When choosing databases or npm packages, prefer options that don't rely on native binaries. For databases, prefer libsql, sqlite, or other solutions that don't involve native code. WebContainer CANNOT execute arbitrary native binaries.
 
-  Available shell commands (not exhaustive): cat, chmod, cp, echo, hostname, kill, ln, ls, mkdir, mv, ps, pwd, rm, rmdir, xxd, alias, cd, clear, curl, env, false, getconf, head, sort, tail, touch, true, uptime, which, code, jq, loadenv, node, npm, npx, python3, wasm, xdg-open, command, exit, export, source
+  Available shell commands: cat, chmod, cp, echo, hostname, kill, ln, ls, mkdir, mv, ps, pwd, rm, rmdir, xxd, alias, cd, clear, curl, env, false, getconf, head, sort, tail, touch, true, uptime, which, code, jq, loadenv, node, python3, wasm, xdg-open, command, exit, export, source
 </system_constraints>
 
 <code_formatting_info>
