@@ -120,6 +120,11 @@ interface TreeEntry {
   content: string;
 }
 
+const GITIGNORE_CONTENT =
+  '# Dependencies\nnode_modules/\n# Build output\ndist/\n# Secrets — never commit real API keys\n.env\n.env.*\n';
+
+const GITIGNORE_ENV_APPEND = '\n\n# Secrets — never commit real API keys\n.env\n.env.*\n';
+
 /**
  * Converts the workbench FileMap into GitHub git-tree entries.
  * Text files are inlined; binary files are skipped and reported.
@@ -145,6 +150,21 @@ function buildTreeEntries(files: FileMap): { entries: TreeEntry[]; skippedBinary
     }
 
     entries.push({ path: repoPath, mode: '100644', type: 'blob', content: dirent.content });
+  }
+
+  // make sure the export carries a .gitignore that keeps secrets out of git
+  const gitignoreEntry = entries.find((entry) => entry.path === '.gitignore');
+
+  if (gitignoreEntry) {
+    const coversEnv = gitignoreEntry.content
+      .split('\n')
+      .some((line) => line.trim().startsWith('.env') || line.trim().startsWith('*.env'));
+
+    if (!coversEnv) {
+      gitignoreEntry.content += GITIGNORE_ENV_APPEND;
+    }
+  } else {
+    entries.push({ path: '.gitignore', mode: '100644', type: 'blob', content: GITIGNORE_CONTENT });
   }
 
   entries.sort((a, b) => a.path.localeCompare(b.path));
