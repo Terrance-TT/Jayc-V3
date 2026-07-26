@@ -10,8 +10,9 @@ export const MAX_TOKENS = 32768;
 export const MAX_RESPONSE_SEGMENTS = 2;
 
 // How hard Kimi K3 thinks before answering: 'low' | 'high' | 'max'.
-// 'low' is deliberate: reasoning tokens produce NO visible stream output,
-// so long thinking leaves the connection silent for minutes and the stream
-// gets killed mid-generation (the ERR_HTTP2_PROTOCOL_ERROR failures).
-// 'high'/'max' (the API default) caused 30+ minute silent generations.
-export const REASONING_EFFORT = 'low';
+// 'high' is the deliberate default (near-max code quality). NOTE: reasoning
+// tokens produce NO visible stream output, so long thinking leaves the
+// connection silent and can get the stream killed mid-generation
+// (ERR_HTTP2_PROTOCOL_ERROR). A user-facing speed/quality ("turbo") toggle
+// is being added separately to expose the fast 'low' mode.
+export const REASONING_EFFORT = 'high';
