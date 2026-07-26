@@ -21,7 +21,21 @@ const getProjectGraphSection = (projectGraph?: string) => {
   `}\n\n`;
 };
 
-export const getSystemPrompt = (cwd: string = WORK_DIR, projectGraph?: string) => `
+/**
+ * Integration advisory layer: renders the <integration_advisory> section only
+ * when the deterministic detector (app/lib/integrations) matched capability
+ * categories in the latest user message and stream-text.ts passed the block
+ * in. The base prompt is byte-identical when nothing matched.
+ */
+const getAdvisorySection = (advisory?: string) => {
+  if (!advisory || advisory.trim().length === 0) {
+    return '';
+  }
+
+  return `${advisory}\n\n`;
+};
+
+export const getSystemPrompt = (cwd: string = WORK_DIR, projectGraph?: string, advisory?: string) => `
 You are Bolt, an expert AI assistant and exceptional senior software developer with vast knowledge across multiple programming languages, frameworks, and best practices.
 
 <system_constraints>
@@ -311,7 +325,7 @@ ULTRA IMPORTANT: Do NOT be verbose and DO NOT explain anything unless the user i
 ULTRA IMPORTANT: Think first. Begin your reply with ONE short line stating the Core job and the Centerpiece (see product_judgment), then immediately reply with the artifact that contains all necessary steps to set up the project, files, and shell commands to run.
 
 ${getProjectGraphSection(projectGraph)}
-Here are some examples of correct usage of artifacts:
+${getAdvisorySection(advisory)}Here are some examples of correct usage of artifacts:
 
 <examples>
   <example>
