@@ -1,19 +1,17 @@
 // Maximum output tokens per model response segment.
 //
-// TEMPORARILY UNCAPPED (diagnostic): set to the K3 API maximum (1,048,576)
-// to rule out max_tokens as the cause of empty responses (finishReason
-// "length" with zero content — K3 reasoning tokens count against this budget).
-//
-// WARNING: reasoning tokens are billed as output tokens (~$15/M). With no
-// practical cap, a single runaway turn can cost real money. Once generation
-// is confirmed working, LOWER THIS to a sane value (e.g. 65536).
-export const MAX_TOKENS = 1048576;
+// Capped at 32k: K3 reasoning tokens count against this budget and are
+// billed as output tokens (~$15/M), so an uncapped budget lets a single
+// runaway turn cost real money. 32k leaves ample room for thinking plus a
+// full artifact while bounding worst-case cost per segment.
+export const MAX_TOKENS = 32768;
 
 // Limits the number of model responses that can be returned in a single request.
 export const MAX_RESPONSE_SEGMENTS = 2;
 
 // How hard Kimi K3 thinks before answering: 'low' | 'high' | 'max'.
-// 'max' (the API default) caused 30+ minute generations. 'high' keeps
-// near-max code quality while letting the model budget and wrap up its
-// thinking deliberately instead of deliberating endlessly.
-export const REASONING_EFFORT = 'high';
+// 'low' is deliberate: reasoning tokens produce NO visible stream output,
+// so long thinking leaves the connection silent for minutes and the stream
+// gets killed mid-generation (the ERR_HTTP2_PROTOCOL_ERROR failures).
+// 'high'/'max' (the API default) caused 30+ minute silent generations.
+export const REASONING_EFFORT = 'low';
