@@ -103,7 +103,8 @@ async function chatAction(args: ActionFunctionArgs) {
 
           messages.push({ role: 'user', content: CONTINUE_PROMPT });
 
-          const retry = await streamText(messages, context.cloudflare.env, options, projectGraph, 'low');
+          // integration advisory layer: retry of the ORIGINAL user message, so advisory stays enabled
+          const retry = await streamText(messages, context.cloudflare.env, options, projectGraph, 'low', true);
 
           return stream.switchSource(retry.toAIStream());
         }
@@ -115,13 +116,14 @@ async function chatAction(args: ActionFunctionArgs) {
         messages.push({ role: 'assistant', content });
         messages.push({ role: 'user', content: CONTINUE_PROMPT });
 
-        const result = await streamText(messages, context.cloudflare.env, options, projectGraph, effort);
+        const result = await streamText(messages, context.cloudflare.env, options, projectGraph, effort, true);
 
         return stream.switchSource(result.toAIStream());
       },
     };
 
-    const result = await streamText(messages, context.cloudflare.env, options, projectGraph, effort);
+    // integration advisory layer: enable deterministic service-suggestion injection for the main chat flow
+    const result = await streamText(messages, context.cloudflare.env, options, projectGraph, effort, true);
 
     stream.switchSource(result.toAIStream());
 

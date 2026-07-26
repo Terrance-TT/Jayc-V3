@@ -317,7 +317,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     setChatStarted(true);
   };
 
-  const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
+  // integration advisory layer: `_event` is optional so suggestion-card picks can reuse this same send path
+  const sendMessage = async (_event: React.UIEvent | undefined, messageInput?: string) => {
     const _input = messageInput || input;
 
     if (_input.length === 0 || isLoading) {
@@ -407,6 +408,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [messageRef, scrollRef] = useSnapScroll();
 
+  // integration advisory layer: clicking an alternative service in the suggestion card sends a normal follow-up message
+  const selectAlternative = (message: string) => sendMessage(undefined, message);
+
   return (
     <BaseChat
       ref={animationScope}
@@ -424,6 +428,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       handleStop={abort}
       turboMode={turboMode}
       onToggleTurbo={toggleTurboMode}
+      onSelectAlternative={selectAlternative}
       messages={messages.map((message, i) => {
         if (message.role === 'user') {
           return message;

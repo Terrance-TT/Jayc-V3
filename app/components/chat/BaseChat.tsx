@@ -25,6 +25,9 @@ interface BaseChatProps {
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
   handleInputChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   enhancePrompt?: () => void;
+
+  /** Integration advisory layer: follow-up send for suggestion-card picks. */
+  onSelectAlternative?: (message: string) => void;
   turboMode?: boolean;
   onToggleTurbo?: () => void;
 }
@@ -55,6 +58,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       sendMessage,
       handleInputChange,
       enhancePrompt,
+      onSelectAlternative,
       handleStop,
       turboMode = true,
       onToggleTurbo,
@@ -98,6 +102,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       className="flex flex-col w-full flex-1 max-w-chat px-4 pb-6 mx-auto z-1"
                       messages={messages}
                       isStreaming={isStreaming}
+                      onSelectAlternative={onSelectAlternative}
                     />
                   ) : null;
                 }}

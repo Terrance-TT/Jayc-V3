@@ -1,8 +1,18 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Markdown } from './Markdown';
+import { parseJaycSuggestions, SuggestionCard } from './SuggestionCard';
 
 interface AssistantMessageProps {
   content: string;
+
+  /**
+   * Integration advisory layer: sends a follow-up user message when the user
+   * picks an alternative service in the suggestion card.
+   */
+  onSelectAlternative?: (message: string) => void;
+
+  /** Disables the suggestion-card buttons while a response is streaming. */
+  suggestionsDisabled?: boolean;
 }
 
 /**
@@ -48,16 +58,30 @@ function useThrottledValue<T>(value: T, interval: number): T {
   return throttled;
 }
 
-export const AssistantMessage = memo(({ content }: AssistantMessageProps) => {
+export const AssistantMessage = memo(({ content, onSelectAlternative, suggestionsDisabled }: AssistantMessageProps) => {
   /**
    * Streaming chunks arrive far faster than markdown can re-render; throttle
    * to keep the UI responsive without ever dropping the final content.
    */
   const throttledContent = useThrottledValue(content, 150);
 
+  /**
+   * Integration advisory layer: extract the machine-readable
+   * <jaycSuggestions> block so it renders as a card instead of raw text and
+   * never leaks into the displayed markdown.
+   */
+  const { text, suggestions } = useMemo(() => parseJaycSuggestions(throttledContent), [throttledContent]);
+
   return (
     <div className="overflow-hidden w-full">
-      <Markdown html>{throttledContent}</Markdown>
+      <Markdown html>{text}</Markdown>
+      {suggestions && (
+        <SuggestionCard
+          suggestions={suggestions}
+          onSelectAlternative={onSelectAlternative}
+          disabled={suggestionsDisabled}
+        />
+      )}
     </div>
   );
 });

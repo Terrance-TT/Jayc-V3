@@ -9,10 +9,13 @@ interface MessagesProps {
   className?: string;
   isStreaming?: boolean;
   messages?: Message[];
+
+  /** Integration advisory layer: follow-up send for suggestion-card picks. */
+  onSelectAlternative?: (message: string) => void;
 }
 
 export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: MessagesProps, ref) => {
-  const { id, isStreaming = false, messages = [] } = props;
+  const { id, isStreaming = false, messages = [], onSelectAlternative } = props;
 
   return (
     <div id={id} ref={ref} className={props.className}>
@@ -39,7 +42,15 @@ export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: 
                   </div>
                 )}
                 <div className="grid grid-col-1 w-full">
-                  {isUserMessage ? <UserMessage content={content} /> : <AssistantMessage content={content} />}
+                  {isUserMessage ? (
+                    <UserMessage content={content} />
+                  ) : (
+                    <AssistantMessage
+                      content={content}
+                      onSelectAlternative={onSelectAlternative}
+                      suggestionsDisabled={isStreaming && isLast}
+                    />
+                  )}
                 </div>
               </div>
             );
