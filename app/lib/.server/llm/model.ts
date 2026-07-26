@@ -16,14 +16,14 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
  * original request.
  */
 const withReasoningEffort =
-  (baseFetch: FetchLike): FetchLike =>
+  (baseFetch: FetchLike, effort: string): FetchLike =>
   async (input, init) => {
     if (init?.body && typeof init.body === 'string') {
       try {
         const body = JSON.parse(init.body);
 
         if (Array.isArray(body.messages)) {
-          body.reasoning_effort = REASONING_EFFORT;
+          body.reasoning_effort = effort;
 
           init = { ...init, body: JSON.stringify(body) };
         }
@@ -35,11 +35,11 @@ const withReasoningEffort =
     return baseFetch(input, init);
   };
 
-export function getMoonshotModel(apiKey: string, env: Env) {
+export function getMoonshotModel(apiKey: string, env: Env, effort: string = REASONING_EFFORT) {
   const moonshot = createOpenAI({
     apiKey,
     baseURL: env.MOONSHOT_BASE_URL || 'https://api.moonshot.ai/v1',
-    fetch: withReasoningEffort(fetch),
+    fetch: withReasoningEffort(fetch, effort),
   });
 
   return moonshot(env.MOONSHOT_MODEL || 'kimi-k3');
