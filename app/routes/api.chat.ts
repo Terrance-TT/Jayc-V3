@@ -9,6 +9,9 @@ const MAX_MESSAGES = 200;
 const MAX_MESSAGES_TOTAL_LENGTH = 800_000;
 const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 
+// reasoning efforts accepted from the client; anything else falls back to the server default
+const VALID_EFFORTS = new Set(['low', 'high', 'max']);
+
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
 }
@@ -30,8 +33,11 @@ async function chatAction(args: ActionFunctionArgs) {
     );
   }
 
-  const body = await request.json<{ messages: Messages; projectGraph?: unknown }>();
+  const body = await request.json<{ messages: Messages; projectGraph?: unknown; effort?: unknown }>();
   const { messages } = body;
+
+  // whitelist-validate the requested reasoning effort; anything else uses the default
+  const effort = typeof body.effort === 'string' && VALID_EFFORTS.has(body.effort) ? body.effort : undefined;
 
   // server-side validation: a non-string or oversized graph snapshot is
   // ignored instead of being trusted blindly
@@ -54,15 +60,52 @@ async function chatAction(args: ActionFunctionArgs) {
   const stream = new SwitchableStream();
 
   try {
+    // guards the empty-response retry so it fires at most once per request
+    let emptyRetryUsed = false;
+
     const options: StreamingOptions = {
       toolChoice: 'none',
       onFinish: async ({ text: content, finishReason }) => {
-        if (finishReason !== 'length') {
+        const isEmpty = content.trim().length === 0;
+
+        if (finishReason !== 'length' && !isEmpty) {
           return stream.close();
         }
 
         if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
+          if (isEmpty) {
+            // out of segments — close rather than hang on an empty answer
+            return stream.close();
+          }
+
           throw Error('Cannot continue message: Maximum segments reached');
+        }
+
+        if (isEmpty) {
+          /**
+           * The model produced no visible output (can happen with long
+           * reasoning at higher effort, including a 'length' finish with
+           * empty text). Retry once through the continuation path at effort
+           * 'low' so the user never gets a silently empty answer.
+           */
+          if (emptyRetryUsed) {
+            return stream.close();
+          }
+
+          emptyRetryUsed = true;
+
+          console.log('Model returned an empty response: retrying once at reasoning effort low');
+
+          if (content.length > 0) {
+            // preserve whitespace-only output so message ordering stays intact
+            messages.push({ role: 'assistant', content });
+          }
+
+          messages.push({ role: 'user', content: CONTINUE_PROMPT });
+
+          const retry = await streamText(messages, context.cloudflare.env, options, projectGraph, 'low');
+
+          return stream.switchSource(retry.toAIStream());
         }
 
         const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
@@ -72,20 +115,20 @@ async function chatAction(args: ActionFunctionArgs) {
         messages.push({ role: 'assistant', content });
         messages.push({ role: 'user', content: CONTINUE_PROMPT });
 
-        const result = await streamText(messages, context.cloudflare.env, options, projectGraph);
+        const result = await streamText(messages, context.cloudflare.env, options, projectGraph, effort);
 
         return stream.switchSource(result.toAIStream());
       },
     };
 
-    const result = await streamText(messages, context.cloudflare.env, options, projectGraph);
+    const result = await streamText(messages, context.cloudflare.env, options, projectGraph, effort);
 
     stream.switchSource(result.toAIStream());
 
     return new Response(stream.readable, {
       status: 200,
       headers: {
-        contentType: 'text/plain; charset=utf-8',
+        'content-type': 'text/plain; charset=utf-8',
       },
     });
   } catch (error) {
