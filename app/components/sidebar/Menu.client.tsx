@@ -1,4 +1,3 @@
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/remix';
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -148,30 +147,7 @@ export function Menu() {
       variants={menuVariants}
       className="flex flex-col side-menu fixed top-0 w-[350px] h-full bg-bolt-elements-background-depth-2 border-r rounded-r-3xl border-bolt-elements-borderColor z-sidebar shadow-xl shadow-bolt-elements-sidebar-dropdownShadow text-sm"
     >
-      <div className="flex items-center justify-between h-[var(--header-height)] px-5">
-        <span className="text-2xl font-bold text-bolt-elements-textPrimary tracking-tight">
-          jay<span className="text-[#4d69a5]">c</span>
-        </span>
-        <div className="flex items-center">
-          <SignedOut>
-            <SignInButton mode="modal">
-              <button className="px-3 py-1.5 rounded-md text-xs font-medium bg-[#4d69a5] text-white hover:bg-[#3d56a0] transition-colors">
-                Sign In
-              </button>
-            </SignInButton>
-          </SignedOut>
-          <SignedIn>
-            <UserButton
-              afterSignOutUrl="/"
-              appearance={{
-                elements: {
-                  avatarBox: 'w-7 h-7',
-                },
-              }}
-            />
-          </SignedIn>
-        </div>
-      </div>
+      <div className="flex items-center h-[var(--header-height)]">{/* Placeholder */}</div>
       <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
         <div className="p-4">
           <a
