@@ -454,6 +454,10 @@ ${getAdvisorySection(advisory)}Here are some examples of correct usage of artifa
           }
         </boltAction>
 
+        <boltAction type="shell">
+          npm install
+        </boltAction>
+
         <boltAction type="file" filePath="tsconfig.json">
           {
             "compilerOptions": {
