@@ -20,11 +20,13 @@ interface BaseChatProps {
   messages?: Message[];
   enhancingPrompt?: boolean;
   promptEnhanced?: boolean;
+  factChecking?: boolean;
   input?: string;
   handleStop?: () => void;
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
   handleInputChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   enhancePrompt?: () => void;
+  factCheck?: () => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -48,11 +50,13 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       isStreaming = false,
       enhancingPrompt = false,
       promptEnhanced = false,
+      factChecking = false,
       messages,
       input = '',
       sendMessage,
       handleInputChange,
       enhancePrompt,
+      factCheck,
       handleStop,
     },
     ref,
@@ -184,6 +188,22 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                           </>
                         )}
                       </IconButton>
+                      {chatStarted && (
+                        <IconButton
+                          title="Fact-check project against web sources"
+                          disabled={isStreaming || factChecking}
+                          onClick={() => factCheck?.()}
+                        >
+                          {factChecking ? (
+                            <>
+                              <div className="i-svg-spinners:90-ring-with-bg text-bolt-elements-loader-progress text-xl"></div>
+                              <div className="ml-1.5">Fact-checking...</div>
+                            </>
+                          ) : (
+                            <div className="i-ph:magnifying-glass text-xl"></div>
+                          )}
+                        </IconButton>
+                      )}
                     </div>
                     {input.length > 3 ? (
                       <div className="text-xs text-bolt-elements-textTertiary">
