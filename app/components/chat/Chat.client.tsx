@@ -30,25 +30,6 @@ const logger = createScopedLogger('Chat');
  */
 const MAX_OUTGOING_MESSAGES_LENGTH = 700_000;
 
-/**
- * Storage key for the turbo/quality preference; turbo defaults ON
- * (fast-by-default, Quality mode is opt-in)
- */
-const TURBO_MODE_STORAGE_KEY = 'jayc_turbo_mode';
-
-// max cadence for persisting message history while a response is streaming
-const STREAMING_SAVE_INTERVAL_MS = 5_000;
-
-function readTurboModePreference(): boolean {
-  try {
-    const stored = window.localStorage.getItem(TURBO_MODE_STORAGE_KEY);
-
-    return stored === null ? true : stored === 'true';
-  } catch {
-    return true;
-  }
-}
-
 interface RootLoaderData {
   clerkState?: unknown;
 }
@@ -172,8 +153,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
 
-  const [turboMode, setTurboMode] = useState<boolean>(readTurboModePreference);
-
   const { showChat } = useStore(chatStore);
 
   const [animationScope, animate] = useAnimate();
@@ -217,63 +196,13 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     initGraphify(workbenchStore.files);
   }, []);
 
-  /**
-   * Persisted-history throttle: while a response is streaming, messages change
-   * on every chunk, so saving each time would hammer IndexedDB. Saves are
-   * throttled to at most one per STREAMING_SAVE_INTERVAL_MS (latest messages
-   * always win), flushed immediately when streaming finishes, and flushed once
-   * more on unmount so the final state is never lost.
-   */
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSaveRef = useRef<Message[] | null>(null);
-  const lastSaveAtRef = useRef(0);
-
-  const flushPendingSave = () => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-
-    const pending = pendingSaveRef.current;
-    pendingSaveRef.current = null;
-
-    if (pending) {
-      lastSaveAtRef.current = Date.now();
-      storeMessageHistory(pending).catch((error) => toast.error(error.message));
-    }
-  };
-
   useEffect(() => {
     parseMessages(messages, isLoading);
 
-    if (messages.length <= initialMessages.length) {
-      return;
-    }
-
-    /**
-     * Record the latest state; when streaming has finished, flush it
-     * immediately, otherwise save at a throttled cadence.
-     */
-    pendingSaveRef.current = messages;
-
-    if (!isLoading) {
-      flushPendingSave();
-
-      return;
-    }
-
-    if (!saveTimerRef.current) {
-      const delay = Math.max(0, STREAMING_SAVE_INTERVAL_MS - (Date.now() - lastSaveAtRef.current));
-
-      saveTimerRef.current = setTimeout(() => {
-        saveTimerRef.current = null;
-        flushPendingSave();
-      }, delay);
+    if (messages.length > initialMessages.length) {
+      storeMessageHistory(messages).catch((error) => toast.error(error.message));
     }
   }, [messages, isLoading, parseMessages]);
-
-  // never lose an in-flight save when the chat unmounts mid-stream
-  useEffect(() => flushPendingSave, []);
 
   const scrollTextArea = () => {
     const textarea = textareaRef.current;
@@ -317,8 +246,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     setChatStarted(true);
   };
 
-  // integration advisory layer: `_event` is optional so suggestion-card picks can reuse this same send path
-  const sendMessage = async (_event: React.UIEvent | undefined, messageInput?: string) => {
+  const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
     const _input = messageInput || input;
 
     if (_input.length === 0 || isLoading) {
@@ -340,12 +268,9 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
     runAnimation();
 
-    /**
-     * The ai SDK v3 merges `body` into the POST JSON; omit the field when the snapshot is empty
-     * `effort` selects the server-side reasoning effort: turbo = fast ('low'), quality = 'high'.
-     */
+    // the ai SDK v3 merges `body` into the POST JSON; omit the field when the snapshot is empty
     const projectGraph = getGraphSnapshot();
-    const body = { ...(projectGraph ? { projectGraph } : {}), effort: turboMode ? 'low' : 'high' };
+    const body = projectGraph ? { projectGraph } : {};
 
     const newMessageContent =
       fileModifications !== undefined ? `${fileModificationsToHTML(fileModifications)}\n\n${_input}` : _input;
@@ -392,24 +317,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     textareaRef.current?.blur();
   };
 
-  const toggleTurboMode = () => {
-    setTurboMode((previous) => {
-      const next = !previous;
-
-      try {
-        window.localStorage.setItem(TURBO_MODE_STORAGE_KEY, String(next));
-      } catch {
-        // storage unavailable (private mode etc.) — keep the in-memory value
-      }
-
-      return next;
-    });
-  };
-
   const [messageRef, scrollRef] = useSnapScroll();
-
-  // integration advisory layer: clicking an alternative service in the suggestion card sends a normal follow-up message
-  const selectAlternative = (message: string) => sendMessage(undefined, message);
 
   return (
     <BaseChat
@@ -426,9 +334,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       scrollRef={scrollRef}
       handleInputChange={handleInputChange}
       handleStop={abort}
-      turboMode={turboMode}
-      onToggleTurbo={toggleTurboMode}
-      onSelectAlternative={selectAlternative}
       messages={messages.map((message, i) => {
         if (message.role === 'user') {
           return message;

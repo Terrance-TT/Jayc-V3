@@ -25,11 +25,6 @@ interface BaseChatProps {
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
   handleInputChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   enhancePrompt?: () => void;
-
-  /** Integration advisory layer: follow-up send for suggestion-card picks. */
-  onSelectAlternative?: (message: string) => void;
-  turboMode?: boolean;
-  onToggleTurbo?: () => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -58,10 +53,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       sendMessage,
       handleInputChange,
       enhancePrompt,
-      onSelectAlternative,
       handleStop,
-      turboMode = true,
-      onToggleTurbo,
     },
     ref,
   ) => {
@@ -102,7 +94,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       className="flex flex-col w-full flex-1 max-w-chat px-4 pb-6 mx-auto z-1"
                       messages={messages}
                       isStreaming={isStreaming}
-                      onSelectAlternative={onSelectAlternative}
                     />
                   ) : null;
                 }}
@@ -190,29 +181,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                           <>
                             <div className="i-bolt:stars text-xl"></div>
                             {promptEnhanced && <div className="ml-1.5">Prompt enhanced</div>}
-                          </>
-                        )}
-                      </IconButton>
-                      <IconButton
-                        title={
-                          turboMode
-                            ? 'Turbo mode: much faster responses with slightly less thinking. Click to switch to Quality mode.'
-                            : 'Quality mode: deeper thinking, slower responses. Click to switch to Turbo mode.'
-                        }
-                        className={classNames({
-                          'text-bolt-elements-item-contentAccent!': turboMode,
-                        })}
-                        onClick={() => onToggleTurbo?.()}
-                      >
-                        {turboMode ? (
-                          <>
-                            <div className="i-ph:lightning-fill text-xl"></div>
-                            <div className="ml-1.5">Turbo</div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="i-ph:brain text-xl"></div>
-                            <div className="ml-1.5">Quality</div>
                           </>
                         )}
                       </IconButton>
