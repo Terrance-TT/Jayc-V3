@@ -152,6 +152,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
+  const [factChecking, setFactChecking] = useState(false);
 
   const { showChat } = useStore(chatStore);
 
@@ -317,6 +318,91 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     textareaRef.current?.blur();
   };
 
+  /**
+   * Fact-check (user-triggered): searches the web for reference facts about
+   * the project domain (via /api.fact-check) and asks the model to compare
+   * them against the current project and fix any inaccuracies. Dormant with
+   * a friendly notice when the deployment has no TAVILY_API_KEY configured.
+   */
+  const runFactCheck = async () => {
+    if (factChecking || isLoading) {
+      return;
+    }
+
+    const firstUserMessage = messages.find((message) => message.role === 'user');
+
+    if (!firstUserMessage) {
+      return;
+    }
+
+    setFactChecking(true);
+
+    try {
+      // strip any diff/markup tags from the original request to form the search query
+      const query = firstUserMessage.content
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
+
+      const response = await fetch('/api/fact-check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      if (response.status === 401) {
+        const body = await response.json<{ message?: string }>().catch(() => ({}));
+
+        handleAuthRequired(body?.message);
+
+        return;
+      }
+
+      if (response.status === 501) {
+        toast.info('Fact-check is not configured on this deployment yet.');
+
+        return;
+      }
+
+      if (response.status === 404) {
+        toast.info('No reference facts found for this topic.');
+
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Fact-check request failed with status ${response.status}`);
+      }
+
+      const { facts } = await response.json<{ facts: string }>();
+
+      const projectGraph = getGraphSnapshot();
+      const body = projectGraph ? { projectGraph } : {};
+
+      append(
+        {
+          role: 'user',
+          content: [
+            '<fact_check>',
+            'Reference facts gathered from the web about this project:',
+            '',
+            facts,
+            '',
+            'Compare these facts against the current project (the project graph and the latest file versions in this conversation). If you find inaccuracies, fix them with FULL updated file contents. If everything checks out, briefly say the project is verified — do not change anything.',
+            '</fact_check>',
+          ].join('\n'),
+        },
+        { body },
+      );
+    } catch (error) {
+      logger.error('Fact-check failed\n\n', error);
+      toast.error('Fact-check failed — please try again');
+    } finally {
+      setFactChecking(false);
+    }
+  };
+
   const [messageRef, scrollRef] = useSnapScroll();
 
   return (
@@ -329,6 +415,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       isStreaming={isLoading}
       enhancingPrompt={enhancingPrompt}
       promptEnhanced={promptEnhanced}
+      factChecking={factChecking}
+      factCheck={runFactCheck}
       sendMessage={sendMessage}
       messageRef={messageRef}
       scrollRef={scrollRef}
