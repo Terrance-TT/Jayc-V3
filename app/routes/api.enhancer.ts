@@ -57,11 +57,6 @@ async function enhancerAction(args: ActionFunctionArgs) {
         },
       ],
       context.cloudflare.env,
-
-      // trivial rewrite task: minimal thinking and a small token budget
-      { maxTokens: 2048 },
-      undefined,
-      'low',
     );
 
     const transformStream = new TransformStream({
