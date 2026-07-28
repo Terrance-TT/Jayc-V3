@@ -1,10 +1,11 @@
 // Maximum output tokens per model response segment.
 //
-// Capped at 32k: K3 reasoning tokens count against this budget and are
-// billed as output tokens (~$15/M), so an uncapped budget lets a single
-// runaway turn cost real money. 32k leaves ample room for thinking plus a
-// full artifact while bounding worst-case cost per segment.
-export const MAX_TOKENS = 32768;
+// TEMPORARILY UNCAPPED (owner request, 2026-07-26): set to the K3 API
+// maximum (1,048,576) so the model can think as long as it wants while the
+// turbo feature is built. WARNING: K3 reasoning tokens are billed as output
+// tokens (~$15/M) — a single long turn can cost real money. RE-CAP THIS
+// (e.g. 32768) once the turbo toggle ships.
+export const MAX_TOKENS = 1048576;
 
 // Limits the number of model responses that can be returned in a single request.
 export const MAX_RESPONSE_SEGMENTS = 2;
