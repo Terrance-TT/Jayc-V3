@@ -9,6 +9,7 @@ import {
 import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
+import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
 import { searchFacts } from '~/lib/.server/fact-check/search';
 
 const MAX_MESSAGES = 200;
@@ -144,7 +145,12 @@ async function chatAction(args: ActionFunctionArgs) {
 
     stream.switchSource(result.toAIStream());
 
-    return new Response(stream.readable, {
+    /**
+     * Heartbeats keep the response alive while the model thinks in silence
+     * (Power mode's deep reasoning can go minutes without a token; an idle
+     * stream gets killed and surfaces as a 502).
+     */
+    return new Response(withHeartbeat(stream.readable), {
       status: 200,
       headers: {
         'content-type': 'text/plain; charset=utf-8',
