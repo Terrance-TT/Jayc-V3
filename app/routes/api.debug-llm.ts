@@ -11,9 +11,14 @@ import { WORK_DIR } from '~/utils/constants';
  * TEMPORARY diagnostic route (delete after the streaming failure is fixed).
  *
  * Visit while signed in:
- *   /api/debug-llm              — non-streaming Moonshot call with the failing sailing prompt
- *   /api/debug-llm?mode=stream  — same call through the real streaming path
- *   /api/debug-llm?msg=...      — custom prompt (max 2000 chars)
+ *   /api/debug-llm                                — non-streaming Moonshot call with the failing sailing prompt
+ *   /api/debug-llm?mode=stream                    — same call through the real streaming path
+ *   /api/debug-llm?msg=...                        — custom prompt (max 2000 chars)
+ *   /api/debug-llm?effort=high&maxTokens=131072   — reproduce Power mode exactly.
+ *
+ * Parameters:
+ *   effort    low | high | max (default: high — the failing configuration)
+ *   maxTokens 1..200000 (default: 512 to keep casual checks cheap)
  *
  * Interpretation:
  *   - sync fails  -> Moonshot rejects the request itself (error body included)
@@ -24,6 +29,10 @@ const DEFAULT_MESSAGE =
 
 const MAX_MESSAGE_LENGTH = 2_000;
 const DEBUG_MAX_TOKENS = 512;
+const DEBUG_MAX_TOKENS_CEILING = 200_000;
+
+const VALID_EFFORTS = new Set(['low', 'high', 'max'] as const);
+type Effort = 'low' | 'high' | 'max';
 
 export async function loader(args: LoaderFunctionArgs) {
   const userId = await resolveUserId(args);
@@ -37,19 +46,31 @@ export async function loader(args: LoaderFunctionArgs) {
   const message = (url.searchParams.get('msg') ?? DEFAULT_MESSAGE).slice(0, MAX_MESSAGE_LENGTH);
   const mode = url.searchParams.get('mode') ?? 'sync';
 
+  // effort defaults to 'high' so a bare visit reproduces the Power-mode failure
+  const effortParam = url.searchParams.get('effort');
+  const effort: Effort = VALID_EFFORTS.has(effortParam as Effort) ? (effortParam as Effort) : 'high';
+
+  const maxTokensParam = Number(url.searchParams.get('maxTokens'));
+  const maxTokens =
+    Number.isInteger(maxTokensParam) && maxTokensParam > 0
+      ? Math.min(maxTokensParam, DEBUG_MAX_TOKENS_CEILING)
+      : DEBUG_MAX_TOKENS;
+
   if (mode === 'stream') {
-    return json(await runStreamTest(message, env));
+    return json(await runStreamTest(message, env, effort, maxTokens));
   }
 
-  return json(await runSyncTest(message, env));
+  return json(await runSyncTest(message, env, effort, maxTokens));
 }
 
-async function runSyncTest(message: string, env: Env) {
+async function runSyncTest(message: string, env: Env, effort: Effort, maxTokens: number) {
+  const startedAt = Date.now();
+
   try {
     const result = await generateText({
-      model: getMoonshotModel(getAPIKey(env), env),
+      model: getMoonshotModel(getAPIKey(env), env, effort),
       system: getSystemPrompt(WORK_DIR),
-      maxTokens: DEBUG_MAX_TOKENS,
+      maxTokens,
       temperature: 1, // K3 requires temperature=1
       messages: [{ role: 'user', content: message }],
     });
@@ -57,8 +78,11 @@ async function runSyncTest(message: string, env: Env) {
     return {
       ok: true,
       mode: 'sync',
+      effort,
+      maxTokens,
+      elapsedMs: Date.now() - startedAt,
       verdict:
-        'Moonshot accepted a NON-streaming request with the real system prompt. If the site still fails, the problem is in the streaming path (Cloudflare CPU limit or stream relay), not Moonshot.',
+        'Moonshot accepted a NON-streaming request with these exact settings. If Power mode still fails on the site, the problem is in the streaming path (Cloudflare stream relay or idle kill), not the request parameters.',
       finishReason: result.finishReason,
       replyPreview: result.text.slice(0, 300),
       usage: result.usage,
@@ -67,25 +91,38 @@ async function runSyncTest(message: string, env: Env) {
     return {
       ok: false,
       mode: 'sync',
+      effort,
+      maxTokens,
+      elapsedMs: Date.now() - startedAt,
       verdict: 'Moonshot itself rejected the request. The error below is the exact reason.',
       error: describeError(error),
     };
   }
 }
 
-async function runStreamTest(message: string, env: Env) {
+async function runStreamTest(message: string, env: Env, effort: Effort, maxTokens: number) {
+  const startedAt = Date.now();
+
   try {
     const result = await streamText([{ role: 'user', content: message }], env, {
       requestOptions: {
         toolChoice: 'none',
-        maxTokens: DEBUG_MAX_TOKENS,
+        maxTokens,
       },
+
+      // mirror production: 'low' maps to turbo settings, anything deeper to power
+      mode: effort === 'low' ? 'turbo' : 'power',
     });
 
     let chunks = 0;
     let chars = 0;
+    let firstChunkMs: number | null = null;
 
     for await (const part of result.textStream) {
+      if (firstChunkMs === null) {
+        firstChunkMs = Date.now() - startedAt;
+      }
+
       chunks += 1;
       chars += part.length;
     }
@@ -93,8 +130,12 @@ async function runStreamTest(message: string, env: Env) {
     return {
       ok: true,
       mode: 'stream',
+      effort,
+      maxTokens,
+      elapsedMs: Date.now() - startedAt,
+      firstChunkMs,
       verdict:
-        'Streaming worked end-to-end for this prompt — try the real site again; the failure may be intermittent.',
+        'Streaming worked end-to-end for these settings — Moonshot streamed without dying. If the site still 502s, the failure is between our response and your browser (edge buffering/timeouts), not upstream.',
       chunks,
       chars,
     };
@@ -102,8 +143,11 @@ async function runStreamTest(message: string, env: Env) {
     return {
       ok: false,
       mode: 'stream',
+      effort,
+      maxTokens,
+      elapsedMs: Date.now() - startedAt,
       verdict:
-        'The STREAMING path failed server-side — this reproduces the site bug. The error below is the exact reason.',
+        'The STREAMING path failed server-side — this reproduces the site bug. The error below is the exact reason (responseBody is Moonshot’s own message when present).',
       error: describeError(error),
     };
   }
