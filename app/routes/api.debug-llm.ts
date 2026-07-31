@@ -112,6 +112,7 @@ async function runStreamTest(message: string, env: Env, effort: Effort, maxToken
 
       // mirror production: 'low' maps to turbo settings, anything deeper to power
       mode: effort === 'low' ? 'turbo' : 'power',
+      includeThinking: true,
     });
 
     let chunks = 0;

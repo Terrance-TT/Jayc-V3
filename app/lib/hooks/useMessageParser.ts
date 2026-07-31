@@ -4,6 +4,7 @@ import { shouldAutoRunCommand } from '~/lib/runtime/action-runner';
 import { StreamingMessageParser } from '~/lib/runtime/message-parser';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { createScopedLogger } from '~/utils/logger';
+import { stripThinking } from '~/utils/thinking';
 
 const logger = createScopedLogger('useMessageParser');
 
@@ -71,7 +72,11 @@ export function useMessageParser() {
 
     for (const [index, message] of messages.entries()) {
       if (message.role === 'assistant') {
-        const newParsedContent = messageParser.parse(message.id, message.content);
+        /**
+         * Thinking spans are display-only scratch: reasoning text may draft
+         * artifact-like markup, so it must never reach the artifact parser.
+         */
+        const newParsedContent = messageParser.parse(message.id, stripThinking(message.content));
 
         setParsedMessages((prevParsed) => ({
           ...prevParsed,

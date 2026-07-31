@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
+import { extractThinking } from '~/utils/thinking';
 import { Markdown } from './Markdown';
 
 interface AssistantMessageProps {
@@ -48,16 +49,58 @@ function useThrottledValue<T>(value: T, interval: number): T {
   return throttled;
 }
 
+/**
+ * Renders the model's reasoning as it streams in (Power mode can think for
+ * minutes — seeing it beats staring at silence). The pane follows the
+ * growing text and is stripped from the message once the response finishes,
+ * so it never reaches history or the model's own input.
+ */
+function ThinkingBlock({ thinking, inProgress }: { thinking: string; inProgress: boolean }) {
+  const paneRef = useRef<HTMLDivElement>(null);
+
+  // follow the reasoning as it grows
+  useEffect(() => {
+    const pane = paneRef.current;
+
+    if (pane) {
+      pane.scrollTop = pane.scrollHeight;
+    }
+  }, [thinking]);
+
+  return (
+    <div className="mb-3 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-bg-depth-2 px-3 py-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-bolt-elements-textTertiary">
+        {inProgress ? (
+          <div className="i-svg-spinners:3-dots-fade text-base" />
+        ) : (
+          <div className="i-ph:brain text-base" />
+        )}
+        {inProgress ? 'Thinking…' : 'Thought process'}
+      </div>
+      <div
+        ref={paneRef}
+        className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-bolt-elements-textTertiary"
+      >
+        {thinking}
+      </div>
+    </div>
+  );
+}
+
 export const AssistantMessage = memo(({ content }: AssistantMessageProps) => {
   /**
    * Streaming chunks arrive far faster than markdown can re-render; throttle
    * to keep the UI responsive without ever dropping the final content.
    */
   const throttledContent = useThrottledValue(content, 150);
+  const { thinking, content: visibleContent, thinkingInProgress } = extractThinking(throttledContent);
 
   return (
     <div className="overflow-hidden w-full">
-      <Markdown html>{throttledContent}</Markdown>
+      {(thinking.length > 0 || thinkingInProgress) && (
+        <ThinkingBlock thinking={thinking} inProgress={thinkingInProgress} />
+      )}
+      <Markdown html>{visibleContent}</Markdown>
     </div>
   );
 });

@@ -1,5 +1,5 @@
 import type { Message } from 'ai';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { classNames } from '~/utils/classNames';
 import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
@@ -9,6 +9,41 @@ interface MessagesProps {
   className?: string;
   isStreaming?: boolean;
   messages?: Message[];
+}
+
+function formatElapsed(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+/**
+ * Live elapsed-time readout while a response streams. Mounted only during
+ * streaming, so its timer always starts with the request. Stays hidden for
+ * the first few seconds — quick answers don't need a clock.
+ */
+function StreamingElapsed() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  if (seconds < 5) {
+    return null;
+  }
+
+  return (
+    <div className="text-xs text-bolt-elements-textTertiary">
+      Working… {formatElapsed(seconds)} — deep reasoning streams in the Thinking box above; you can stop anytime.
+    </div>
+  );
 }
 
 export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: MessagesProps, ref) => {
@@ -46,7 +81,10 @@ export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: 
           })
         : null}
       {isStreaming && (
-        <div className="text-center w-full text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl mt-4"></div>
+        <div className="flex flex-col items-center gap-1 w-full mt-4">
+          <div className="text-bolt-elements-textSecondary i-svg-spinners:3-dots-fade text-4xl"></div>
+          <StreamingElapsed />
+        </div>
       )}
       {!isStreaming && messages.length > 0 && (
         <div className="flex justify-center mt-4 mb-2">

@@ -14,6 +14,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
+import { PAUSE_SENTINEL, hasThinking, stripThinking } from '~/utils/thinking';
 import { BaseChat } from './BaseChat';
 
 const toastAnimation = cssTransition({
@@ -275,6 +276,30 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   // never lose an in-flight save when the chat unmounts mid-stream
   useEffect(() => flushPendingSave, []);
 
+  /**
+   * Thinking spans are display-only scratch: they stay visible while a
+   * response streams so long reasoning phases show live progress, and are
+   * stripped the moment it finishes. Keeping them would bloat persisted
+   * history and every subsequent request payload with reasoning text.
+   */
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    if (!messages.some((message) => message.role === 'assistant' && hasThinking(message.content))) {
+      return;
+    }
+
+    setMessages(
+      messages.map((message) =>
+        message.role === 'assistant' && hasThinking(message.content)
+          ? { ...message, content: stripThinking(message.content) }
+          : message,
+      ),
+    );
+  }, [messages, isLoading]);
+
   const scrollTextArea = () => {
     const textarea = textareaRef.current;
 
@@ -499,6 +524,15 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [messageRef, scrollRef] = useSnapScroll();
 
+  /**
+   * The server pauses over-long generations with a sentinel-tagged note
+   * (time budget, api.chat.ts). Offer a one-click Continue when the latest
+   * message is such a pause.
+   */
+  const lastMessage = messages[messages.length - 1];
+  const responsePaused =
+    !isLoading && lastMessage?.role === 'assistant' && lastMessage.content.includes(PAUSE_SENTINEL);
+
   return (
     <BaseChat
       ref={animationScope}
@@ -512,6 +546,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       factChecking={factChecking}
       factCheck={runFactCheck}
       sendMessage={sendMessage}
+      showContinue={responsePaused}
+      onContinue={(event) => sendMessage(event, 'continue')}
       messageRef={messageRef}
       scrollRef={scrollRef}
       handleInputChange={handleInputChange}

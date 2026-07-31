@@ -22,6 +22,7 @@ interface BaseChatProps {
   promptEnhanced?: boolean;
   factChecking?: boolean;
   turboMode?: boolean;
+  showContinue?: boolean;
   input?: string;
   handleStop?: () => void;
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
@@ -29,6 +30,7 @@ interface BaseChatProps {
   enhancePrompt?: () => void;
   factCheck?: () => void;
   onToggleTurbo?: () => void;
+  onContinue?: (event: React.UIEvent) => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -54,6 +56,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       promptEnhanced = false,
       factChecking = false,
       turboMode = true,
+      showContinue = false,
       messages,
       input = '',
       sendMessage,
@@ -61,6 +64,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       enhancePrompt,
       factCheck,
       onToggleTurbo,
+      onContinue,
       handleStop,
     },
     ref,
@@ -231,6 +235,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                           </>
                         )}
                       </IconButton>
+                      {showContinue && (
+                        <IconButton
+                          title="Continue the paused response"
+                          className="text-bolt-elements-item-contentAccent!"
+                          onClick={(event) => onContinue?.(event)}
+                        >
+                          <div className="i-ph:play-fill text-xl"></div>
+                          <div className="ml-1.5">Continue</div>
+                        </IconButton>
+                      )}
                     </div>
                     {input.length > 3 ? (
                       <div className="text-xs text-bolt-elements-textTertiary">
@@ -239,6 +253,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     ) : null}
                   </div>
                 </div>
+                {!turboMode && (
+                  <div className="mt-2 text-center text-xs text-bolt-elements-textTertiary">
+                    Power mode thinks deeply — responses can take several minutes. Switch to Turbo for quick iterations.
+                  </div>
+                )}
                 <div className="bg-bolt-elements-background-depth-1 pb-6">{/* Ghost Element */}</div>
               </div>
             </div>

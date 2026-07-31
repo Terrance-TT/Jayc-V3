@@ -11,11 +11,23 @@ import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
 import { searchFacts } from '~/lib/.server/fact-check/search';
+import { PAUSE_SENTINEL } from '~/utils/thinking';
 
 const MAX_MESSAGES = 200;
 const MAX_MESSAGES_TOTAL_LENGTH = 800_000;
 const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 const MAX_SEARCH_QUERY_LENGTH = 300;
+
+/**
+ * Wall-clock budget for one request (including continuation segments).
+ * Deep-reasoning generations can run for tens of minutes; at the budget the
+ * server appends a visible pause note and closes the stream cleanly — a
+ * graceful pause with a one-click Continue, never a silently killed
+ * connection like the 502s this replaces.
+ */
+const TIME_BUDGET_MS = 8 * 60_000;
+
+const TIME_BUDGET_NOTE = `\n\n> ⏸ **Paused to stay within the time budget.** Press **Continue** (or reply "continue") and I'll pick up exactly where I left off.\n\n${PAUSE_SENTINEL}`;
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -75,6 +87,23 @@ async function chatAction(args: ActionFunctionArgs) {
 
   const stream = new SwitchableStream();
 
+  /**
+   * Graceful time-budget pause: injects the note as a protocol-valid text
+   * part, then closes cleanly. Closing cancels the active reader, which
+   * also aborts the upstream model call — no tokens burn after the pause.
+   */
+  const pauseFrame = new TextEncoder().encode(`0:${JSON.stringify(TIME_BUDGET_NOTE)}\n`);
+  const budgetTimer = setTimeout(() => {
+    stream.inject(pauseFrame);
+    stream.close();
+  }, TIME_BUDGET_MS);
+
+  const closeStream = () => {
+    clearTimeout(budgetTimer);
+
+    return stream.close();
+  };
+
   try {
     // guards the empty-response retry so it fires at most once per request
     let emptyRetryUsed = false;
@@ -85,13 +114,13 @@ async function chatAction(args: ActionFunctionArgs) {
         const isEmpty = content.trim().length === 0;
 
         if (finishReason !== 'length' && !isEmpty) {
-          return stream.close();
+          return closeStream();
         }
 
         if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
           if (isEmpty) {
             // out of segments — close rather than hang on an empty answer
-            return stream.close();
+            return closeStream();
           }
 
           throw Error('Cannot continue message: Maximum segments reached');
@@ -105,7 +134,7 @@ async function chatAction(args: ActionFunctionArgs) {
            * gets a silently empty answer.
            */
           if (emptyRetryUsed) {
-            return stream.close();
+            return closeStream();
           }
 
           emptyRetryUsed = true;
@@ -123,6 +152,7 @@ async function chatAction(args: ActionFunctionArgs) {
             requestOptions: options,
             projectGraph,
             mode: 'turbo',
+            includeThinking: true,
           });
 
           return stream.switchSource(retry.toAIStream());
@@ -135,13 +165,25 @@ async function chatAction(args: ActionFunctionArgs) {
         messages.push({ role: 'assistant', content });
         messages.push({ role: 'user', content: CONTINUE_PROMPT });
 
-        const result = await streamText(messages, env, { requestOptions: options, projectGraph, webSearch, mode });
+        const result = await streamText(messages, env, {
+          requestOptions: options,
+          projectGraph,
+          webSearch,
+          mode,
+          includeThinking: true,
+        });
 
         return stream.switchSource(result.toAIStream());
       },
     };
 
-    const result = await streamText(messages, env, { requestOptions: options, projectGraph, webSearch, mode });
+    const result = await streamText(messages, env, {
+      requestOptions: options,
+      projectGraph,
+      webSearch,
+      mode,
+      includeThinking: true,
+    });
 
     stream.switchSource(result.toAIStream());
 
@@ -165,6 +207,8 @@ async function chatAction(args: ActionFunctionArgs) {
       },
     });
   } catch (error) {
+    clearTimeout(budgetTimer);
+
     console.log(error);
 
     throw new Response(null, {

@@ -2,6 +2,7 @@ export default class SwitchableStream extends TransformStream {
   private _controller: TransformStreamDefaultController | null = null;
   private _currentReader: ReadableStreamDefaultReader | null = null;
   private _switches = 0;
+  private _closed = false;
 
   constructor() {
     let controllerRef: TransformStreamDefaultController | undefined;
@@ -31,6 +32,22 @@ export default class SwitchableStream extends TransformStream {
     this._switches++;
   }
 
+  /**
+   * Enqueues a raw chunk outside of any source stream (e.g. the time-budget
+   * pause note in api.chat.ts). Ignored once the stream is closed.
+   */
+  inject(chunk: Uint8Array) {
+    if (this._closed) {
+      return;
+    }
+
+    try {
+      this._controller?.enqueue(chunk);
+    } catch {
+      // controller already terminated — nothing to inject into
+    }
+  }
+
   private async _pumpStream() {
     if (!this._currentReader || !this._controller) {
       throw new Error('Stream is not properly initialized');
@@ -53,6 +70,12 @@ export default class SwitchableStream extends TransformStream {
   }
 
   close() {
+    if (this._closed) {
+      return;
+    }
+
+    this._closed = true;
+
     if (this._currentReader) {
       this._currentReader.cancel();
     }
