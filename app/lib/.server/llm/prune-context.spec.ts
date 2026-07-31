@@ -59,8 +59,10 @@ describe('pruneMessages', () => {
 
     const pruned = pruneMessages(messages);
 
-    // App.tsx only exists in turn 1 — it is still the current version,
-    // so its contents must survive pruning even though the message is old
+    /**
+     * App.tsx only exists in turn 1 — it is still the current version,
+     * so its contents must survive pruning even though the message is old.
+     */
     expect(pruned[1].content).toContain('APP WRITTEN IN TURN 1, NEVER TOUCHED AGAIN');
   });
 

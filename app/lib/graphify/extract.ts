@@ -9,8 +9,7 @@ const REQUIRE_RE = /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 const EXPORT_DECL_RE =
   /\bexport\s+(default\s+)?(?:(?:abstract|declare|async)\s+)*(function\*?|class|const|let|var|type|interface|enum)\s+([\w$]+)/g;
-const EXPORT_DEFAULT_RE =
-  /\bexport\s+default\s+(?!(?:(?:abstract|declare|async)\s+)*(?:function|class)\b)([\w$]+)?/g;
+const EXPORT_DEFAULT_RE = /\bexport\s+default\s+(?!(?:(?:abstract|declare|async)\s+)*(?:function|class)\b)([\w$]+)?/g;
 const EXPORT_LIST_RE = /\bexport\s+(?:type\s+)?\{([\w${},*\s]*?)\}(?!\s*from)/g;
 
 const SYMBOL_RES: Array<[RegExp, GraphSymbolKind]> = [
@@ -270,11 +269,11 @@ function extractDocComment(content: string): string | undefined {
     return undefined;
   }
 
-  // strip angle brackets so the comment can never break out of the
-  // `<project_graph>` section of the system prompt
+  /**
+   * Strip angle brackets so the comment can never break out of the
+   * `<project_graph>` section of the system prompt.
+   */
   const sanitized = firstLine.replace(/[<>]/g, '');
 
-  return sanitized.length > DOC_COMMENT_MAX_LENGTH
-    ? `${sanitized.slice(0, DOC_COMMENT_MAX_LENGTH - 3)}...`
-    : sanitized;
+  return sanitized.length > DOC_COMMENT_MAX_LENGTH ? `${sanitized.slice(0, DOC_COMMENT_MAX_LENGTH - 3)}...` : sanitized;
 }

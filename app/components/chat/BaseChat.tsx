@@ -21,12 +21,14 @@ interface BaseChatProps {
   enhancingPrompt?: boolean;
   promptEnhanced?: boolean;
   factChecking?: boolean;
+  turboMode?: boolean;
   input?: string;
   handleStop?: () => void;
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
   handleInputChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   enhancePrompt?: () => void;
   factCheck?: () => void;
+  onToggleTurbo?: () => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -51,12 +53,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       enhancingPrompt = false,
       promptEnhanced = false,
       factChecking = false,
+      turboMode = true,
       messages,
       input = '',
       sendMessage,
       handleInputChange,
       enhancePrompt,
       factCheck,
+      onToggleTurbo,
       handleStop,
     },
     ref,
@@ -77,7 +81,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
               <div id="intro" className="mt-[26vh] max-w-chat mx-auto">
-                <h1 className="text-5xl text-center font-bold text-bolt-elements-textPrimary mb-2">
+                <h1 className="text-5xl text-center font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-accent-400 via-accent-500 to-accent-700 pb-1 mb-2">
                   Where ideas begin
                 </h1>
                 <p className="mb-4 text-center text-bolt-elements-textSecondary">
@@ -109,7 +113,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               >
                 {!chatStarted && (
                   <div className="mb-4 flex flex-col items-center gap-3">
-                    <div className="flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-[#4d69a5]/40 bg-[#4d69a5]/10 text-[#4d69a5] text-center">
+                    <div className="flex items-center gap-2 px-5 py-3 rounded-xl border border-bolt-elements-borderColor bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent text-center">
                       <div className="i-ph:lock-key-fill text-lg" />
                       <span className="text-sm font-medium">Sign in required to generate code</span>
                     </div>
@@ -120,7 +124,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 )}
                 <div
                   className={classNames(
-                    'shadow-sm border border-bolt-elements-borderColor bg-bolt-elements-prompt-background backdrop-filter backdrop-blur-[8px] rounded-lg overflow-hidden',
+                    'shadow-[0_8px_32px_rgba(0,0,0,0.08)] border border-bolt-elements-borderColor focus-within:border-bolt-elements-borderColorActive bg-bolt-elements-prompt-background backdrop-filter backdrop-blur-[8px] rounded-2xl overflow-hidden transition-theme',
                   )}
                 >
                   <textarea
@@ -204,6 +208,29 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                           )}
                         </IconButton>
                       )}
+                      <IconButton
+                        title={
+                          turboMode
+                            ? 'Turbo mode: much faster responses with lighter thinking. Click to switch to Power mode.'
+                            : 'Power mode: deeper thinking, slower and pricier responses. Click to switch to Turbo mode.'
+                        }
+                        className={classNames({
+                          'text-bolt-elements-item-contentAccent!': turboMode,
+                        })}
+                        onClick={() => onToggleTurbo?.()}
+                      >
+                        {turboMode ? (
+                          <>
+                            <div className="i-ph:lightning-fill text-xl"></div>
+                            <div className="ml-1.5">Turbo</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="i-ph:brain text-xl"></div>
+                            <div className="ml-1.5">Power</div>
+                          </>
+                        )}
+                      </IconButton>
                     </div>
                     {input.length > 3 ? (
                       <div className="text-xs text-bolt-elements-textTertiary">
@@ -216,8 +243,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               </div>
             </div>
             {!chatStarted && (
-              <div id="examples" className="relative w-full max-w-xl mx-auto mt-8 flex flex-col items-center">
-                <div className="flex flex-col space-y-2 [mask-image:linear-gradient(to_bottom,black_0%,transparent_180%)] hover:[mask-image:none]">
+              <div id="examples" className="relative w-full max-w-2xl mx-auto mt-8 flex flex-col items-center">
+                <div className="flex flex-wrap justify-center gap-2">
                   {EXAMPLE_PROMPTS.map((examplePrompt, index) => {
                     return (
                       <button
@@ -225,10 +252,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         onClick={(event) => {
                           sendMessage?.(event, examplePrompt.text);
                         }}
-                        className="group flex items-center w-full gap-2 justify-center bg-transparent text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary transition-theme"
+                        className="px-4 py-1.5 rounded-full border border-bolt-elements-borderColor bg-bolt-elements-bg-depth-2 text-sm text-bolt-elements-textTertiary hover:text-bolt-elements-item-contentAccent hover:border-bolt-elements-borderColorActive hover:bg-bolt-elements-item-backgroundAccent transition-theme"
                       >
                         {examplePrompt.text}
-                        <div className="i-ph:arrow-bend-down-left" />
                       </button>
                     );
                   })}

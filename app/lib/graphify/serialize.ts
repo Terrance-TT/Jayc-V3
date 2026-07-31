@@ -11,9 +11,8 @@ interface SerialLine {
 }
 
 /**
- * Serializes the graph into a compact, line-per-file text snapshot, e.g.:
- *
- *   src/App.tsx | exports: App(default) | imports: ./components/Chat, ../lib/api | used-by: src/main.tsx | "Chat root component"
+ * Serializes the graph into a compact, line-per-file text snapshot.
+ * Example: `src/App.tsx | exports: App(default) | imports: ./components/Chat, ../lib/api | used-by: src/main.tsx | "Chat root component"`
  *
  * Sorted by path. Non-code files appear as path-only lines so the model sees
  * the full tree. When the output exceeds `budgetChars`, leaf files (no
@@ -58,7 +57,9 @@ export function serializeGraph(graph: ProjectGraph, budgetChars = 10_000): strin
     }
 
     if (node.imports.length > 0) {
-      parts.push(`imports: ${[...new Set(node.imports.map((record) => sanitizeForPrompt(record.specifier)))].join(', ')}`);
+      parts.push(
+        `imports: ${[...new Set(node.imports.map((record) => sanitizeForPrompt(record.specifier)))].join(', ')}`,
+      );
     }
 
     const usedBy = (importers.get(path) ?? []).map((importer) => sanitizeForPrompt(toRelative(importer))).sort();
@@ -155,8 +156,13 @@ function toRelative(path: string): string {
 /**
  * Strips angle brackets so a rendered line can never break out of the
  * `<project_graph>` section of the system prompt (e.g. a file path or
- * symbol name containing `</project_graph>`).
+ * symbol name containing `</project_graph>`), and collapses newlines and
+ * other control characters so a hostile path/symbol cannot inject extra
+ * lines into the prompt.
  */
 function sanitizeForPrompt(text: string): string {
-  return text.replace(/[<>]/g, '');
+  return text
+    .replace(/[<>]/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
 }

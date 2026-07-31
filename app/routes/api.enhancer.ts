@@ -19,8 +19,10 @@ async function enhancerAction(args: ActionFunctionArgs) {
   const userId = await resolveUserId(args);
 
   if (!userId) {
-    // JSON body (instead of bare text) so the client can explain why the
-    // request failed and send the user to the sign-in page.
+    /**
+     * JSON body (instead of bare text) so the client can explain why the
+     * request failed and send the user to the sign-in page.
+     */
     return new Response(
       JSON.stringify({
         error: 'auth_required',
@@ -57,6 +59,9 @@ async function enhancerAction(args: ActionFunctionArgs) {
         },
       ],
       context.cloudflare.env,
+
+      // trivial rewrite task: minimal thinking and a small token budget
+      { requestOptions: { maxTokens: 2048 }, mode: 'turbo' },
     );
 
     const transformStream = new TransformStream({

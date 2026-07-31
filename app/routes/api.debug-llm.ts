@@ -50,7 +50,7 @@ async function runSyncTest(message: string, env: Env) {
       model: getMoonshotModel(getAPIKey(env), env),
       system: getSystemPrompt(WORK_DIR),
       maxTokens: DEBUG_MAX_TOKENS,
-      temperature: 1, // Kimi K3 requires temperature=1
+      temperature: 1, // K3 requires temperature=1
       messages: [{ role: 'user', content: message }],
     });
 
@@ -76,8 +76,10 @@ async function runSyncTest(message: string, env: Env) {
 async function runStreamTest(message: string, env: Env) {
   try {
     const result = await streamText([{ role: 'user', content: message }], env, {
-      toolChoice: 'none',
-      maxTokens: DEBUG_MAX_TOKENS,
+      requestOptions: {
+        toolChoice: 'none',
+        maxTokens: DEBUG_MAX_TOKENS,
+      },
     });
 
     let chunks = 0;
@@ -91,7 +93,8 @@ async function runStreamTest(message: string, env: Env) {
     return {
       ok: true,
       mode: 'stream',
-      verdict: 'Streaming worked end-to-end for this prompt — try the real site again; the failure may be intermittent.',
+      verdict:
+        'Streaming worked end-to-end for this prompt — try the real site again; the failure may be intermittent.',
       chunks,
       chars,
     };

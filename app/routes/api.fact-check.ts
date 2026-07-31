@@ -10,10 +10,10 @@ export async function action(args: ActionFunctionArgs) {
   const userId = await resolveUserId(args);
 
   if (!userId) {
-    return new Response(
-      JSON.stringify({ error: 'auth_required', message: 'Please sign in to use fact-check.' }),
-      { status: 401, headers: JSON_HEADERS },
-    );
+    return new Response(JSON.stringify({ error: 'auth_required', message: 'Please sign in to use fact-check.' }), {
+      status: 401,
+      headers: JSON_HEADERS,
+    });
   }
 
   const apiKey = args.context.cloudflare.env.TAVILY_API_KEY;

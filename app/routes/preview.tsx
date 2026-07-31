@@ -51,8 +51,8 @@ export default function PreviewPage() {
         <div className="text-center max-w-md p-6">
           <h1 className="text-lg font-medium text-bolt-elements-textPrimary mb-2">No preview to show</h1>
           <p className="text-sm text-bolt-elements-textSecondary">
-            This page displays live Jayc app previews. Open an app in Jayc, wait for its preview to start, then
-            use the "open in new tab" button in the preview toolbar.
+            This page displays live Jayc app previews. Open an app in Jayc, wait for its preview to start, then use the
+            "open in new tab" button in the preview toolbar.
           </p>
         </div>
       </div>

@@ -23,11 +23,15 @@ export class GraphifyStore {
   constructor(filesStore: MapStore<FileMap>) {
     this.#filesStore = filesStore;
 
-    // SSR-safe: the module may be imported server-side, but the graph is
-    // only ever built in the browser.
+    /**
+     * SSR-safe: the module may be imported server-side, but the graph is
+     * only ever built in the browser.
+     */
     if (typeof window !== 'undefined') {
-      // nanostores `subscribe` fires immediately with the current value,
-      // which also covers the initial sync.
+      /**
+       * Nanostores `subscribe` fires immediately with the current value,
+       * which also covers the initial sync.
+       */
       this.#unsubscribe = this.#filesStore.subscribe(() => this.#scheduleSync());
     }
   }

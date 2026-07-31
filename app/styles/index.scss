@@ -12,3 +12,38 @@ body {
   height: 100%;
   width: 100%;
 }
+
+/* Thin, theme-aware scrollbars everywhere */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bolt-elements-bg-depth-3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--bolt-elements-bg-depth-3);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--bolt-elements-textTertiary);
+}
+
+/* Consistent keyboard focus ring */
+:focus-visible {
+  outline: 2px solid var(--bolt-elements-borderColorActive);
+  outline-offset: 2px;
+}
+
+/* Accent-tinted text selection */
+::selection {
+  background: theme('colors.alpha.accent.30');
+}

@@ -5,8 +5,16 @@ interface Env {
   CLERK_PUBLISHABLE_KEY?: string;
   CLERK_SECRET_KEY?: string;
 
-  // Cloudflare D1 binding (see [[d1_databases]] in wrangler.toml).
-  // Optional: until the database is created, sync routes report
-  // "database_not_configured" and the client falls back to IndexedDB only.
+  /**
+   * Optional: enables web-search features (chat enrichment + fact-check).
+   * Without it both stay dormant (fact-check reports "not_configured").
+   */
+  TAVILY_API_KEY?: string;
+
+  /**
+   * Cloudflare D1 binding (see [[d1_databases]] in wrangler.toml).
+   * Optional: until the database is created, sync routes report
+   * "database_not_configured" and the client falls back to IndexedDB only.
+   */
   DB?: D1Database;
 }

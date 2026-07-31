@@ -32,6 +32,9 @@ export async function searchFacts(query: string, apiKey: string): Promise<string
     const response = await fetch(TAVILY_ENDPOINT, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+
+      // hard ceiling on latency: a slow search must never stall the chat
+      signal: AbortSignal.timeout(8_000),
       body: JSON.stringify({
         api_key: apiKey,
         query,

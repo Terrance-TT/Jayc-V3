@@ -46,7 +46,7 @@ export const loader: LoaderFunction = (args) => {
   const publishableKey = args.context.cloudflare.env.CLERK_PUBLISHABLE_KEY ?? '';
   const secretKey = args.context.cloudflare.env.CLERK_SECRET_KEY ?? '';
 
-  // Clerk is optional: when the keys are not configured, the app runs without auth.
+  // clerk is optional: when the keys are not configured, the app runs without auth
   if (!publishableKey || !secretKey) {
     return json({});
   }
@@ -97,13 +97,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { clerkState } = useLoaderData<{ clerkState?: ClerkState }>();
 
-  // Without configured Clerk keys there is no auth state — render the app as-is.
+  // without configured clerk keys there is no auth state — render the app as-is
   if (!clerkState) {
     return <Outlet />;
   }
 
+  /**
+   * Remix's SerializeFrom maps ClerkState through JsonifyObject, which no
+   * longer matches ClerkProvider's prop type; the runtime value is exactly
+   * the JSON state Clerk expects, so the cast is safe.
+   */
   return (
-    <ClerkProvider clerkState={clerkState}>
+    <ClerkProvider clerkState={clerkState as ClerkState}>
       <Outlet />
     </ClerkProvider>
   );

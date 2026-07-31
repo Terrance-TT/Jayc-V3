@@ -1,5 +1,5 @@
 /**
- * graphify — internal project knowledge graph.
+ * Graphify — internal project knowledge graph.
  *
  * The client maintains a live dependency graph of the workspace
  * (files = nodes, imports/exports = edges) and sends a compact serialized

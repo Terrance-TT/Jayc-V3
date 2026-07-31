@@ -27,8 +27,10 @@ export function usePromptEnhancer() {
       }),
     });
 
-    // signed-out visitors get a JSON 401 — hand the message to the caller so
-    // it can explain why and send the user to the sign-in page.
+    /**
+     * Signed-out visitors get a JSON 401 — hand the message to the caller so
+     * it can explain why and send the user to the sign-in page.
+     */
     if (response.status === 401) {
       setEnhancingPrompt(false);
 
