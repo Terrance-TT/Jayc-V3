@@ -153,7 +153,15 @@ async function chatAction(args: ActionFunctionArgs) {
     return new Response(withHeartbeat(stream.readable), {
       status: 200,
       headers: {
-        'content-type': 'text/plain; charset=utf-8',
+        /**
+         * SSE content type (instead of text/plain): the body is a
+         * newline-delimited event stream, and marking it as such stops
+         * intermediate proxies/ISPs from buffering or killing it as an
+         * idle download. The AI SDK client parses the body generically,
+         * so this changes nothing client-side.
+         */
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
       },
     });
   } catch (error) {
