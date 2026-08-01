@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractThinking, hasThinking, stripThinking } from './thinking';
+import { extractThinking, hasThinking, isClarifyingQuestions, stripQuestionsMarker, stripThinking } from './thinking';
 
 describe('extractThinking', () => {
   it('returns the input untouched when there are no thinking spans', () => {
@@ -67,5 +67,28 @@ describe('stripThinking / hasThinking', () => {
   it('is a no-op without spans', () => {
     expect(hasThinking('Clean.')).toBe(false);
     expect(stripThinking('Clean.')).toBe('Clean.');
+  });
+});
+
+describe('isClarifyingQuestions', () => {
+  it('detects the marker on the first line', () => {
+    expect(isClarifyingQuestions('QUESTIONS:\n1. Who is this app for?')).toBe(true);
+    expect(isClarifyingQuestions('\n\n  questions: \n1. Dark or light?')).toBe(true);
+  });
+
+  it('ignores the marker when thinking spans precede it', () => {
+    expect(isClarifyingQuestions('<jayc-thinking>hmm, ambiguous</jayc-thinking>QUESTIONS:\n1. For whom?')).toBe(true);
+  });
+
+  it('rejects plans and prose', () => {
+    expect(isClarifyingQuestions('- modules/frontend: the whole UI\n- modules/api: routes')).toBe(false);
+    expect(isClarifyingQuestions('Sure! Here are some questions you might ask yourself:')).toBe(false);
+  });
+});
+
+describe('stripQuestionsMarker', () => {
+  it('removes only the marker line', () => {
+    expect(stripQuestionsMarker('QUESTIONS:\n1. Who is this for?')).toBe('1. Who is this for?');
+    expect(stripQuestionsMarker('A plan mentioning QUESTIONS: later')).toBe('A plan mentioning QUESTIONS: later');
   });
 });

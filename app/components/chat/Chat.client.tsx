@@ -41,6 +41,29 @@ const LEGACY_TURBO_STORAGE_KEY = 'jayc_turbo_mode';
 // max cadence for persisting message history while a response is streaming
 const STREAMING_SAVE_INTERVAL_MS = 5_000;
 
+/**
+ * BYOK (bring-your-own-key): the user's OpenRouter key + model, kept in
+ * localStorage and sent with each request. Never stored server-side.
+ */
+const BYOK_KEY_STORAGE = 'jayc_byok_key';
+const BYOK_MODEL_STORAGE = 'jayc_byok_model';
+
+interface ByokState {
+  apiKey: string;
+  model: string;
+}
+
+function readByokConfig(): ByokState | null {
+  try {
+    const apiKey = window.localStorage.getItem(BYOK_KEY_STORAGE)?.trim() ?? '';
+    const model = window.localStorage.getItem(BYOK_MODEL_STORAGE)?.trim() ?? '';
+
+    return apiKey.length > 0 && model.length > 0 ? { apiKey, model } : null;
+  } catch {
+    return null;
+  }
+}
+
 function readThinkingMode(): ThinkingMode {
   try {
     const stored = window.localStorage.getItem(THINKING_MODE_STORAGE_KEY);
@@ -191,6 +214,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
   const [factChecking, setFactChecking] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(readThinkingMode);
+  const [byok, setByok] = useState<ByokState | null>(readByokConfig);
 
   const { showChat } = useStore(chatStore);
 
@@ -391,6 +415,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     const body = {
       ...(projectGraph ? { projectGraph } : {}),
       mode: thinkingMode,
+      ...(byok ? { byok } : {}),
     };
 
     const newMessageContent =
@@ -501,6 +526,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       const body = {
         ...(projectGraph ? { projectGraph } : {}),
         mode: thinkingMode,
+        ...(byok ? { byok } : {}),
       };
 
       append(
@@ -540,6 +566,22 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     });
   };
 
+  const handleByokChange = (config: ByokState | null) => {
+    setByok(config);
+
+    try {
+      if (config) {
+        window.localStorage.setItem(BYOK_KEY_STORAGE, config.apiKey);
+        window.localStorage.setItem(BYOK_MODEL_STORAGE, config.model);
+      } else {
+        window.localStorage.removeItem(BYOK_KEY_STORAGE);
+        window.localStorage.removeItem(BYOK_MODEL_STORAGE);
+      }
+    } catch {
+      // storage unavailable — keep the in-memory value
+    }
+  };
+
   const [messageRef, scrollRef] = useSnapScroll();
 
   return (
@@ -561,6 +603,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       handleStop={abort}
       thinkingMode={thinkingMode}
       onCycleThinkingMode={cycleThinkingMode}
+      byokConfig={byok}
+      onByokChange={handleByokChange}
       messages={messages.map((message, i) => {
         if (message.role === 'user') {
           return message;

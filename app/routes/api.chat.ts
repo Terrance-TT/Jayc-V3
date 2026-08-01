@@ -1,13 +1,14 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { getAuth } from '@clerk/remix/ssr.server';
-import { DEFAULT_THINKING_MODE, resolveGeneration } from '~/lib/.server/llm/constants';
+import { DEFAULT_THINKING_MODE, looksLikeBuildRequest, resolveGeneration } from '~/lib/.server/llm/constants';
 import { runGeneration } from '~/lib/.server/llm/pipeline';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
 import type { Messages } from '~/lib/.server/llm/stream-text';
 import { searchFacts } from '~/lib/.server/fact-check/search';
 import { createScopedLogger } from '~/utils/logger';
-import type { ThinkingMode } from '~/utils/thinking';
+import { isClarifyingQuestions, type ThinkingMode } from '~/utils/thinking';
+import type { ByokConfig } from '~/lib/.server/llm/model';
 
 const logger = createScopedLogger('ChatAction');
 
@@ -41,13 +42,16 @@ async function chatAction(args: ActionFunctionArgs) {
     );
   }
 
-  const body = await request.json<{ messages: Messages; projectGraph?: unknown; mode?: unknown }>();
+  const body = await request.json<{ messages: Messages; projectGraph?: unknown; mode?: unknown; byok?: unknown }>();
   const { messages } = body;
 
   // whitelist-validate the requested thinking mode; anything else uses the default
   const mode: ThinkingMode = VALID_MODES.has(body.mode as ThinkingMode)
     ? (body.mode as ThinkingMode)
     : DEFAULT_THINKING_MODE;
+
+  // bring-your-own-key: validated per request, used in-memory only
+  const byok = parseByok(body.byok);
 
   /**
    * Server-side validation: a non-string or oversized graph snapshot is
@@ -74,8 +78,16 @@ async function chatAction(args: ActionFunctionArgs) {
   // live web-search enrichment for new projects (dormant without TAVILY_API_KEY)
   const webSearch = await maybeSearchWeb(messages, env);
 
-  const isFirstMessage = messages.length === 1 && messages[0]?.role === 'user';
-  const generation = resolveGeneration(mode, isFirstMessage);
+  /**
+   * The pipeline runs only when the turn deserves it: a build-like first
+   * message (questions and chat skip it), or the answer to a previous set
+   * of clarifying questions. Power mode pipelines regardless.
+   */
+  const firstMessage = messages[0];
+  const isBuildLikeFirstMessage =
+    messages.length === 1 && firstMessage?.role === 'user' && looksLikeBuildRequest(firstMessage.content);
+  const pipelineWorthy = isBuildLikeFirstMessage || hasPendingQuestions(messages);
+  const generation = resolveGeneration(mode, pipelineWorthy);
 
   const stream = new SwitchableStream();
 
@@ -84,7 +96,7 @@ async function chatAction(args: ActionFunctionArgs) {
    * pass, continuations) while the response returns immediately. The
    * heartbeat wrapper keeps the connection warm through every silent gap.
    */
-  runGeneration({ messages, env, stream, generation, projectGraph, webSearch }).catch((error) => {
+  runGeneration({ messages, env, stream, generation, projectGraph, webSearch, byok }).catch((error) => {
     logger.error('Generation pipeline crashed', error);
     stream.error(error);
   });
@@ -136,6 +148,44 @@ async function maybeSearchWeb(messages: Messages, env: Env): Promise<string | un
   }
 
   return (await searchFacts(query, apiKey)) ?? undefined;
+}
+
+/**
+ * True when the latest assistant message is an unanswered set of
+ * clarifying questions — the user's reply should be treated as
+ * pipeline-worthy even though it is not the first message.
+ */
+function hasPendingQuestions(messages: Messages): boolean {
+  const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+
+  return lastAssistant ? isClarifyingQuestions(lastAssistant.content) : false;
+}
+
+/**
+ * Validates the client's bring-your-own-key config. The key travels from
+ * the client's localStorage with each request and is used in memory only —
+ * never logged, never persisted server-side. The base URL is pinned
+ * server-side (see model.ts) so this cannot be turned into an SSRF relay.
+ */
+function parseByok(raw: unknown): ByokConfig | undefined {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+
+  const { apiKey, model } = raw as Record<string, unknown>;
+
+  if (typeof apiKey !== 'string' || typeof model !== 'string') {
+    return undefined;
+  }
+
+  const trimmedKey = apiKey.trim();
+  const trimmedModel = model.trim();
+
+  if (trimmedKey.length < 8 || trimmedKey.length > 256 || trimmedModel.length === 0 || trimmedModel.length > 128) {
+    return undefined;
+  }
+
+  return { apiKey: trimmedKey, model: trimmedModel };
 }
 
 /**

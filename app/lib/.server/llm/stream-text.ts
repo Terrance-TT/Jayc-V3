@@ -1,6 +1,6 @@
 import { streamText as _streamText, convertToCoreMessages } from 'ai';
 import { getAPIKey } from '~/lib/.server/llm/api-key';
-import { getMoonshotModel } from '~/lib/.server/llm/model';
+import { getMoonshotModel, type ByokConfig } from '~/lib/.server/llm/model';
 import { WORK_DIR } from '~/utils/constants';
 import { hasThinking, stripThinking } from '~/utils/thinking';
 import { LIGHT_EFFORT, LIGHT_MAX_TOKENS, type ReasoningEffort } from './constants';
@@ -24,6 +24,13 @@ export type Messages = Message[];
 
 export type StreamingOptions = Omit<Parameters<typeof _streamText>[0], 'model'>;
 
+/**
+ * Output cap for bring-your-own-key calls: free-tier models have smaller
+ * limits than K3, so passes are clamped to this and continuations handle
+ * the rest.
+ */
+const BYOK_MAX_TOKENS = 32_768;
+
 export interface StreamTextOptions {
   /** forwarded verbatim to the AI SDK (onFinish, maxTokens, abortSignal, …) */
   requestOptions?: StreamingOptions;
@@ -46,15 +53,20 @@ export interface StreamTextOptions {
    * output must stay clean (e.g. the prompt enhancer).
    */
   includeThinking?: boolean;
+
+  /** bring-your-own-key config (OpenRouter); replaces the default Moonshot backend */
+  byok?: ByokConfig;
 }
 
 export function streamText(messages: Messages, env: Env, options?: StreamTextOptions) {
-  const { requestOptions, projectGraph, webSearch, effort, systemSuffix, includeThinking } = options ?? {};
+  const { requestOptions, projectGraph, webSearch, effort, systemSuffix, includeThinking, byok } = options ?? {};
+
+  const requestedMaxTokens = requestOptions?.maxTokens ?? LIGHT_MAX_TOKENS;
+  const maxTokens = byok ? Math.min(requestedMaxTokens, BYOK_MAX_TOKENS) : requestedMaxTokens;
 
   return _streamText({
-    model: getMoonshotModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false),
+    model: getMoonshotModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false, byok),
     system: getSystemPrompt(WORK_DIR, projectGraph, webSearch) + (systemSuffix ?? ''),
-    maxTokens: LIGHT_MAX_TOKENS,
     temperature: 1, // K3 requires temperature=1
 
     /**
@@ -66,6 +78,9 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
      */
     messages: convertToCoreMessages(pruneMessages(stripThinkingFromMessages(messages))),
     ...requestOptions,
+
+    // after the spread so the BYOK clamp always wins
+    maxTokens,
   });
 }
 

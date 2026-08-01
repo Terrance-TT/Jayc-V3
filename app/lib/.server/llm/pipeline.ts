@@ -1,4 +1,5 @@
 import { createScopedLogger } from '~/utils/logger';
+import { isClarifyingQuestions } from '~/utils/thinking';
 import {
   BUILD_EFFORT,
   BUILD_MAX_TOKENS,
@@ -22,6 +23,7 @@ import {
 } from './prompts';
 import { streamText, type Messages, type StreamingOptions } from './stream-text';
 import type SwitchableStream from './switchable-stream';
+import type { ByokConfig } from './model';
 
 const logger = createScopedLogger('GenerationPipeline');
 
@@ -32,6 +34,7 @@ interface RunGenerationParams {
   generation: GenerationPlan;
   projectGraph?: string;
   webSearch?: string;
+  byok?: ByokConfig;
 }
 
 interface PassParams {
@@ -95,6 +98,13 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
     if (generation.pipeline) {
       const { buildMessages, timedOut } = await runThinkingPhases(params);
 
+      if (buildMessages === null) {
+        // clarifying questions were asked — the reply is complete
+        stream.close();
+
+        return;
+      }
+
       await params.stream.switchSource(markerStream(timedOut ? BUILD_TIMEOUT_MARKER : BUILD_MARKER));
 
       await streamWithContinuations(params, buildMessages, BUILD_EFFORT, BUILD_MAX_TOKENS);
@@ -137,9 +147,13 @@ function markerStream(text: string): ReadableStream<Uint8Array> {
  * pass plus whether the thinking clock cut the design short. Thinking-phase
  * failures never lose the build: a failed pass falls back to building from
  * whatever exists, and the clock transitions to the build phase instead of
- * stopping the session.
+ * stopping the session. When the plan pass answers with clarifying
+ * QUESTIONS instead of a plan, `buildMessages` is null — the pipeline stops
+ * there and the questions are the whole reply.
  */
-async function runThinkingPhases(params: RunGenerationParams): Promise<{ buildMessages: Messages; timedOut: boolean }> {
+async function runThinkingPhases(
+  params: RunGenerationParams,
+): Promise<{ buildMessages: Messages | null; timedOut: boolean }> {
   const thinking = [...params.messages];
 
   let abortedByClock = false;
@@ -152,7 +166,7 @@ async function runThinkingPhases(params: RunGenerationParams): Promise<{ buildMe
   }, THINKING_BUDGET_MS);
 
   try {
-    // phase 1: quick, powerful core draft
+    // phase 1: quick, powerful core draft (or clarifying questions)
     try {
       currentAbort = new AbortController();
 
@@ -163,6 +177,17 @@ async function runThinkingPhases(params: RunGenerationParams): Promise<{ buildMe
         systemSuffix: PLAN_PHASE_SUFFIX,
         abortSignal: currentAbort.signal,
       });
+
+      if (isClarifyingQuestions(plan.text)) {
+        /**
+         * The model needs answers before it can plan. The questions are
+         * already streamed; stop the pipeline here. The user's answer is
+         * treated as pipeline-worthy on the next turn (see api.chat.ts).
+         */
+        logger.info('Plan phase returned clarifying questions — pausing the pipeline for the answer');
+
+        return { buildMessages: null, timedOut: false };
+      }
 
       if (plan.text.trim().length > 0) {
         thinking.push({ role: 'assistant', content: plan.text });
@@ -311,6 +336,7 @@ async function runPass(params: RunGenerationParams, pass: PassParams): Promise<P
       effort: pass.effort,
       systemSuffix: pass.systemSuffix,
       includeThinking: true,
+      byok: params.byok,
     })
       .then((result) => params.stream.switchSource(result.toAIStream().pipeThrough(accumulator.stream)))
       .catch(fail);

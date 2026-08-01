@@ -1,15 +1,21 @@
 import type { Message } from 'ai';
-import React, { type RefCallback } from 'react';
+import React, { type RefCallback, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import { IconButton } from '~/components/ui/IconButton';
 import { Workbench } from '~/components/workbench/Workbench.client';
 import { classNames } from '~/utils/classNames';
 import type { ThinkingMode } from '~/utils/thinking';
+import { ByokDialog } from './ByokDialog';
 import { Messages } from './Messages.client';
 import { SendButton } from './SendButton.client';
 
 import styles from './BaseChat.module.scss';
+
+interface ByokConfig {
+  apiKey: string;
+  model: string;
+}
 
 interface BaseChatProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement> | undefined;
@@ -23,6 +29,7 @@ interface BaseChatProps {
   promptEnhanced?: boolean;
   factChecking?: boolean;
   thinkingMode?: ThinkingMode;
+  byokConfig?: ByokConfig | null;
   input?: string;
   handleStop?: () => void;
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
@@ -30,6 +37,7 @@ interface BaseChatProps {
   enhancePrompt?: () => void;
   factCheck?: () => void;
   onCycleThinkingMode?: () => void;
+  onByokChange?: (config: ByokConfig | null) => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -79,6 +87,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       promptEnhanced = false,
       factChecking = false,
       thinkingMode = 'auto',
+      byokConfig = null,
       messages,
       input = '',
       sendMessage,
@@ -86,11 +95,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       enhancePrompt,
       factCheck,
       onCycleThinkingMode,
+      onByokChange,
       handleStop,
     },
     ref,
   ) => {
     const TEXTAREA_MAX_HEIGHT = chatStarted ? 400 : 200;
+
+    const [byokDialogOpen, setByokDialogOpen] = useState(false);
+    const byokActive = byokConfig !== null;
 
     return (
       <div
@@ -241,6 +254,19 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         <div className={`${MODE_DISPLAY[thinkingMode].icon} text-xl`}></div>
                         <div className="ml-1.5">{MODE_DISPLAY[thinkingMode].label}</div>
                       </IconButton>
+                      <IconButton
+                        title={
+                          byokActive
+                            ? `BYOK active: ${byokConfig.model} via your OpenRouter key. Click to change.`
+                            : 'Use your own OpenRouter key (BYOK) — free models available'
+                        }
+                        className={classNames({
+                          'text-bolt-elements-item-contentAccent!': byokActive,
+                        })}
+                        onClick={() => setByokDialogOpen(true)}
+                      >
+                        <div className="i-ph:key-fill text-xl"></div>
+                      </IconButton>
                     </div>
                     {input.length > 3 ? (
                       <div className="text-xs text-bolt-elements-textTertiary">
@@ -280,6 +306,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           </div>
           <ClientOnly>{() => <Workbench chatStarted={chatStarted} isStreaming={isStreaming} />}</ClientOnly>
         </div>
+        <ByokDialog
+          open={byokDialogOpen}
+          initialKey={byokConfig?.apiKey ?? ''}
+          initialModel={byokConfig?.model ?? ''}
+          onOpenChange={setByokDialogOpen}
+          onSave={(config) => onByokChange?.(config)}
+          onClear={() => onByokChange?.(null)}
+        />
       </div>
     );
   },

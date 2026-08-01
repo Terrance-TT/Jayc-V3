@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { extractThinking } from '~/utils/thinking';
+import { extractThinking, stripQuestionsMarker } from '~/utils/thinking';
 import { Markdown } from './Markdown';
 
 interface AssistantMessageProps {
@@ -95,12 +95,15 @@ export const AssistantMessage = memo(({ content }: AssistantMessageProps) => {
   const throttledContent = useThrottledValue(content, 150);
   const { thinking, content: visibleContent, thinkingInProgress } = extractThinking(throttledContent);
 
+  // the QUESTIONS: marker steers the pipeline; it is not for display
+  const displayContent = stripQuestionsMarker(visibleContent);
+
   return (
     <div className="overflow-hidden w-full">
       {(thinking.length > 0 || thinkingInProgress) && (
         <ThinkingBlock thinking={thinking} inProgress={thinkingInProgress} />
       )}
-      <Markdown html>{visibleContent}</Markdown>
+      <Markdown html>{displayContent}</Markdown>
     </div>
   );
 });

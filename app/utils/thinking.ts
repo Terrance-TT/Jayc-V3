@@ -65,3 +65,30 @@ export function stripThinking(raw: string): string {
 export function hasThinking(raw: string): boolean {
   return raw.includes(THINKING_OPEN_TAG);
 }
+
+/**
+ * Clarifying-questions flow (pipeline plan phase): when the request is too
+ * ambiguous to plan against, the model is instructed to reply with up to 3
+ * short questions starting with the exact marker line `QUESTIONS:`. The
+ * server detects the marker to stop the pipeline and to treat the user's
+ * answer as pipeline-worthy; the client hides the marker line on display.
+ */
+export const QUESTIONS_MARKER = 'QUESTIONS:';
+
+/**
+ * True when a message is a clarifying-questions reply: its first non-empty
+ * line (after removing any thinking spans) is the QUESTIONS: marker.
+ */
+export function isClarifyingQuestions(raw: string): boolean {
+  const content = stripThinking(raw);
+  const firstLine = content.split('\n').find((line) => line.trim().length > 0) ?? '';
+
+  return firstLine.trim().toUpperCase().startsWith(QUESTIONS_MARKER);
+}
+
+/**
+ * Removes the marker line for display (keeps the questions themselves).
+ */
+export function stripQuestionsMarker(raw: string): string {
+  return raw.replace(new RegExp(`^(\\s*)${QUESTIONS_MARKER}\\s*`, 'i'), '$1');
+}

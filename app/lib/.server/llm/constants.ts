@@ -35,14 +35,16 @@ export const LIGHT_EFFORT: ReasoningEffort = 'low';
 export const LIGHT_MAX_TOKENS = 32_768;
 
 /**
- * Pipeline phase bounds. Phase 1 is deliberately tight so the core draft
- * lands in well under two minutes; phase 2 gets the deep expansion budget;
- * the build phase is bounded per segment with continuations on top.
+ * Pipeline phase bounds. Phase 1 runs LIGHT: its only job is a quick core
+ * draft (~30s), because the depth lives in phase 2 (the user's "thinks
+ * quickly, then spiderwebs" design). Phase 2 gets the deep expansion
+ * budget, capped so the design wraps up instead of wandering; the build
+ * phase is bounded per segment with continuations on top.
  */
-export const PLAN_EFFORT: ReasoningEffort = 'high';
+export const PLAN_EFFORT: ReasoningEffort = 'low';
 export const PLAN_MAX_TOKENS = 6_144;
 export const EXPAND_EFFORT: ReasoningEffort = 'high';
-export const EXPAND_MAX_TOKENS = 49_152;
+export const EXPAND_MAX_TOKENS = 32_768;
 export const BUILD_EFFORT: ReasoningEffort = 'high';
 export const BUILD_MAX_TOKENS = 65_536;
 
@@ -58,15 +60,42 @@ export const MAX_RESPONSE_SEGMENTS = 6;
 
 /**
  * Resolves a requested thinking mode into a concrete generation plan.
+ * `pipelineWorthy` is the server-side judgment that this turn deserves the
+ * full pipeline (a build-like first message or a freshly answered set of
+ * clarifying questions) — power mode ignores it and always pipelines.
  */
-export function resolveGeneration(mode: ThinkingMode, isFirstMessage: boolean): GenerationPlan {
+export function resolveGeneration(mode: ThinkingMode, pipelineWorthy: boolean): GenerationPlan {
   if (mode === 'power') {
     return { pipeline: true };
   }
 
-  if (mode === 'auto' && isFirstMessage) {
+  if (mode === 'auto' && pipelineWorthy) {
     return { pipeline: true };
   }
 
   return { pipeline: false, effort: LIGHT_EFFORT, maxTokens: LIGHT_MAX_TOKENS };
+}
+
+// matches openings that read as questions, not build requests
+const QUESTION_OPENING_PATTERN =
+  /^(how|what|why|when|where|which|who|whom|whose|is|are|was|were|do|does|did|can|could|should|would|will|explain|tell me)\b/i;
+
+/**
+ * Decides whether a first user message is a BUILD request (deserving the
+ * plan→expand→build pipeline) or something lighter — a question, a chatty
+ * opener, or too vague to plan against. Prevents the deep pipeline from
+ * burning minutes on "How do I center a div?".
+ */
+export function looksLikeBuildRequest(message: string): boolean {
+  const text = message.trim();
+
+  if (text.length < 24) {
+    return false;
+  }
+
+  if (QUESTION_OPENING_PATTERN.test(text)) {
+    return false;
+  }
+
+  return true;
 }
