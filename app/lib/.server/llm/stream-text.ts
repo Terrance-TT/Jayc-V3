@@ -2,7 +2,7 @@ import { streamText as _streamText, convertToCoreMessages } from 'ai';
 import { getAPIKey } from '~/lib/.server/llm/api-key';
 import { getMoonshotModel, type ByokConfig } from '~/lib/.server/llm/model';
 import { WORK_DIR } from '~/utils/constants';
-import { hasThinking, stripThinking } from '~/utils/thinking';
+import { describeControlTags, hasThinking, stripThinking } from '~/utils/thinking';
 import { LIGHT_EFFORT, LIGHT_MAX_TOKENS, type ReasoningEffort } from './constants';
 import { pruneMessages } from './prune-context';
 import { getSystemPrompt } from './prompts';
@@ -76,7 +76,7 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
      * small and free of stale-code confusion (see prune-context.ts).
      * Displayed/persisted history is unaffected.
      */
-    messages: convertToCoreMessages(pruneMessages(stripThinkingFromMessages(messages))),
+    messages: convertToCoreMessages(pruneMessages(sanitizeMessagesForModel(messages))),
     ...requestOptions,
 
     // after the spread so the BYOK clamp always wins
@@ -85,13 +85,20 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
 }
 
 /**
- * Removes <jayc-thinking> spans from assistant messages so reasoning scratch
- * is never sent back to the model.
+ * Message hygiene before anything goes to the model: removes
+ * <jayc-thinking> reasoning scratch from assistant messages and translates
+ * thinking-choice control tags in user messages into plain language.
  */
-function stripThinkingFromMessages(messages: Messages): Messages {
-  return messages.map((message) =>
-    message.role === 'assistant' && hasThinking(message.content)
-      ? { ...message, content: stripThinking(message.content) }
-      : message,
-  );
+function sanitizeMessagesForModel(messages: Messages): Messages {
+  return messages.map((message) => {
+    if (message.role === 'assistant' && hasThinking(message.content)) {
+      return { ...message, content: stripThinking(message.content) };
+    }
+
+    if (message.role === 'user' && message.content.includes('<jayc_control>')) {
+      return { ...message, content: describeControlTags(message.content) };
+    }
+
+    return message;
+  });
 }

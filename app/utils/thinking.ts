@@ -67,6 +67,68 @@ export function hasThinking(raw: string): boolean {
 }
 
 /**
+ * Thinking-clock choice flow (pipeline.ts + api.chat.ts): when the thinking
+ * budget runs out on a complex build, the server ends the reply with a
+ * choice note carrying this sentinel; the client offers "Think longer" /
+ * "Build now" buttons that reply with control tags.
+ */
+export const THINKING_CHOICE_SENTINEL = '<!--jayc:think-choice-->';
+
+export type ControlChoice = 'think_longer' | 'build_now';
+
+// routing pattern: the whole user message is one control tag
+const CONTROL_TAG_FULL_PATTERN = /^\s*<jayc_control>(think_longer|build_now)<\/jayc_control>\s*$/;
+
+export function controlTag(choice: ControlChoice): string {
+  return `<jayc_control>${choice}</jayc_control>`;
+}
+
+/**
+ * Parses a control message from the client. Returns null for anything that
+ * is not exactly one control tag.
+ */
+export function parseControlTag(content: string): ControlChoice | null {
+  const match = CONTROL_TAG_FULL_PATTERN.exec(content);
+
+  return match ? (match[1] as ControlChoice) : null;
+}
+
+/**
+ * Stateless extension counting: prior "think longer" choices in the
+ * history, so the server can cap extensions without keeping state.
+ */
+export function countThinkLongerChoices(messages: Array<{ role: string; content: string }>): number {
+  let count = 0;
+
+  for (const message of messages) {
+    if (message.role === 'user' && parseControlTag(message.content) === 'think_longer') {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Replaces control tags with plain-language equivalents so the model sees
+ * clean context when the tags ride along in later-turn history.
+ */
+export function describeControlTags(raw: string): string {
+  return raw
+    .replace(/<jayc_control>think_longer<\/jayc_control>/g, '(user chose: think longer — keep deepening the design)')
+    .replace(/<jayc_control>build_now<\/jayc_control>/g, '(user chose: build now — build from the current design)');
+}
+
+/**
+ * Renders control tags as friendly labels for display in the chat.
+ */
+export function displayControlTags(raw: string): string {
+  return raw
+    .replace(/<jayc_control>think_longer<\/jayc_control>/g, '⏳ Think longer')
+    .replace(/<jayc_control>build_now<\/jayc_control>/g, '🔨 Build now');
+}
+
+/**
  * Clarifying-questions flow (pipeline plan phase): when the request is too
  * ambiguous to plan against, the model is instructed to reply with up to 3
  * short questions starting with the exact marker line `QUESTIONS:`. The

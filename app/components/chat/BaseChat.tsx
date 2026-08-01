@@ -6,6 +6,7 @@ import { IconButton } from '~/components/ui/IconButton';
 import { Workbench } from '~/components/workbench/Workbench.client';
 import { classNames } from '~/utils/classNames';
 import type { ThinkingMode } from '~/utils/thinking';
+import type { ControlChoice } from '~/utils/thinking';
 import { ByokDialog } from './ByokDialog';
 import { Messages } from './Messages.client';
 import { SendButton } from './SendButton.client';
@@ -30,6 +31,7 @@ interface BaseChatProps {
   factChecking?: boolean;
   thinkingMode?: ThinkingMode;
   byokConfig?: ByokConfig | null;
+  thinkingChoiceOffered?: boolean;
   input?: string;
   handleStop?: () => void;
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
@@ -38,6 +40,7 @@ interface BaseChatProps {
   factCheck?: () => void;
   onCycleThinkingMode?: () => void;
   onByokChange?: (config: ByokConfig | null) => void;
+  onThinkingChoice?: (choice: ControlChoice) => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -88,6 +91,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       factChecking = false,
       thinkingMode = 'auto',
       byokConfig = null,
+      thinkingChoiceOffered = false,
       messages,
       input = '',
       sendMessage,
@@ -96,6 +100,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       factCheck,
       onCycleThinkingMode,
       onByokChange,
+      onThinkingChoice,
       handleStop,
     },
     ref,
@@ -267,6 +272,26 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       >
                         <div className="i-ph:key-fill text-xl"></div>
                       </IconButton>
+                      {thinkingChoiceOffered && (
+                        <>
+                          <IconButton
+                            title="Keep deepening the design (about 10 more minutes)"
+                            className="text-bolt-elements-item-contentAccent!"
+                            onClick={() => onThinkingChoice?.('think_longer')}
+                          >
+                            <div className="i-ph:brain text-xl"></div>
+                            <div className="ml-1.5">Think longer</div>
+                          </IconButton>
+                          <IconButton
+                            title="Build from the current design now — gaps filled with best judgment"
+                            className="text-bolt-elements-item-contentAccent!"
+                            onClick={() => onThinkingChoice?.('build_now')}
+                          >
+                            <div className="i-ph:hammer text-xl"></div>
+                            <div className="ml-1.5">Build now</div>
+                          </IconButton>
+                        </>
+                      )}
                     </div>
                     {input.length > 3 ? (
                       <div className="text-xs text-bolt-elements-textTertiary">

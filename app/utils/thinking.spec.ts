@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { extractThinking, hasThinking, isClarifyingQuestions, stripQuestionsMarker, stripThinking } from './thinking';
+import {
+  countThinkLongerChoices,
+  describeControlTags,
+  displayControlTags,
+  extractThinking,
+  hasThinking,
+  isClarifyingQuestions,
+  parseControlTag,
+  stripQuestionsMarker,
+  stripThinking,
+} from './thinking';
 
 describe('extractThinking', () => {
   it('returns the input untouched when there are no thinking spans', () => {
@@ -90,5 +100,41 @@ describe('stripQuestionsMarker', () => {
   it('removes only the marker line', () => {
     expect(stripQuestionsMarker('QUESTIONS:\n1. Who is this for?')).toBe('1. Who is this for?');
     expect(stripQuestionsMarker('A plan mentioning QUESTIONS: later')).toBe('A plan mentioning QUESTIONS: later');
+  });
+});
+
+describe('parseControlTag', () => {
+  it('parses exact control messages', () => {
+    expect(parseControlTag('<jayc_control>think_longer</jayc_control>')).toBe('think_longer');
+    expect(parseControlTag('  <jayc_control>build_now</jayc_control>  ')).toBe('build_now');
+  });
+
+  it('rejects embedded tags and plain text', () => {
+    expect(parseControlTag('please <jayc_control>think_longer</jayc_control> now')).toBeNull();
+    expect(parseControlTag('think longer')).toBeNull();
+    expect(parseControlTag('')).toBeNull();
+  });
+});
+
+describe('countThinkLongerChoices', () => {
+  it('counts only user think_longer control messages', () => {
+    const messages = [
+      { role: 'user', content: '<jayc_control>think_longer</jayc_control>' },
+      { role: 'assistant', content: '<jayc_control>think_longer</jayc_control>' },
+      { role: 'user', content: '<jayc_control>build_now</jayc_control>' },
+      { role: 'user', content: 'normal message' },
+      { role: 'user', content: '<jayc_control>think_longer</jayc_control>' },
+    ];
+
+    expect(countThinkLongerChoices(messages)).toBe(2);
+  });
+});
+
+describe('describeControlTags / displayControlTags', () => {
+  it('translates tags for the model and for display', () => {
+    expect(describeControlTags('<jayc_control>build_now</jayc_control>')).toBe(
+      '(user chose: build now — build from the current design)',
+    );
+    expect(displayControlTags('<jayc_control>think_longer</jayc_control>')).toBe('⏳ Think longer');
   });
 });

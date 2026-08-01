@@ -1,4 +1,5 @@
 import { modificationsRegex } from '~/utils/diff';
+import { displayControlTags } from '~/utils/thinking';
 import { Markdown } from './Markdown';
 
 interface UserMessageProps {
@@ -14,5 +15,6 @@ export function UserMessage({ content }: UserMessageProps) {
 }
 
 function sanitizeUserMessage(content: string) {
-  return content.replace(modificationsRegex, '').trim();
+  // file-modification markup is hidden; control tags show as friendly labels
+  return displayControlTags(content.replace(modificationsRegex, '')).trim();
 }

@@ -54,10 +54,13 @@ export const VERIFY_MAX_TOKENS = 16_384;
 
 /**
  * Wall-clock budget for the two THINKING phases of a pipeline run. Reaching
- * it never stops the session: the active pass is aborted and the build
- * phase starts with whatever the design already covers.
+ * it never stops the session: the user gets a choice — keep thinking in a
+ * fresh window, or build from the salvaged design (see pipeline.ts).
  */
 export const THINKING_BUDGET_MS = 10 * 60_000;
+
+// how many "think longer" extensions a user may take before the build is forced
+export const MAX_THINK_EXTENSIONS = 2;
 
 // generous ceiling: 3 pipeline phases + build continuations
 export const MAX_RESPONSE_SEGMENTS = 6;

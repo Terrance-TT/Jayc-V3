@@ -746,3 +746,21 @@ export const VERIFY_PHASE_SUFFIX = `
 
 // user-role bridge into the verification pass (facts are appended after it)
 export const VERIFY_BRIDGE_PROMPT = 'Verify the project’s domain rules against these freshly fetched reference facts:';
+
+/**
+ * Continued-thinking phase (pipeline think-longer flow): the user chose to
+ * extend the design window after the thinking clock fired.
+ */
+export const CONTINUE_THINKING_SUFFIX = `
+
+<phase_instruction>
+  THIS IS A CONTINUED DESIGN PHASE. The user asked for more thinking time. Keep deepening the design you already started — still NO code and NO artifact tags:
+
+  - pick up exactly where the design stopped; do not restart or repeat it
+  - deepen the parts that are thin: exact files, key logic, edge cases, integration points
+  - when the design is complete, stop — the build phase follows automatically
+</phase_instruction>`;
+
+// user-role bridge into a continued-thinking pass (replaces the control tag)
+export const CONTINUE_THINKING_PROMPT =
+  'Continue and deepen the design you started, per the phase instruction in your system prompt.';

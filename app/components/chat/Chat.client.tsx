@@ -14,7 +14,14 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
-import { hasThinking, stripThinking, type ThinkingMode } from '~/utils/thinking';
+import {
+  controlTag,
+  hasThinking,
+  stripThinking,
+  THINKING_CHOICE_SENTINEL,
+  type ControlChoice,
+  type ThinkingMode,
+} from '~/utils/thinking';
 import { BaseChat } from './BaseChat';
 
 const toastAnimation = cssTransition({
@@ -584,6 +591,38 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [messageRef, scrollRef] = useSnapScroll();
 
+  /**
+   * Thinking-clock choice: when the server ends a reply with the choice
+   * sentinel (complex build, thinking budget exhausted), offer the two
+   * paths. Clicking sends a control message the pipeline routes.
+   */
+  const lastAssistantMessage = [...messages].reverse().find((message) => message.role === 'assistant');
+  const thinkingChoiceOffered =
+    !isLoading && (lastAssistantMessage?.content.includes(THINKING_CHOICE_SENTINEL) ?? false);
+
+  const handleThinkingChoice = (choice: ControlChoice) => {
+    if (isLoading) {
+      return;
+    }
+
+    const content = controlTag(choice);
+    const projectGraph = getGraphSnapshot();
+    const body = {
+      ...(projectGraph ? { projectGraph } : {}),
+      mode: thinkingMode,
+      ...(byok ? { byok } : {}),
+    };
+
+    // keep the outgoing request under the server cap, same as normal sends
+    const trimmedMessages = trimMessagesToBudget(messages, content, projectGraph?.length ?? 0);
+
+    if (trimmedMessages) {
+      setMessages(trimmedMessages);
+    }
+
+    append({ role: 'user', content }, { body });
+  };
+
   return (
     <BaseChat
       ref={animationScope}
@@ -605,6 +644,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       onCycleThinkingMode={cycleThinkingMode}
       byokConfig={byok}
       onByokChange={handleByokChange}
+      thinkingChoiceOffered={thinkingChoiceOffered}
+      onThinkingChoice={handleThinkingChoice}
       messages={messages.map((message, i) => {
         if (message.role === 'user') {
           return message;

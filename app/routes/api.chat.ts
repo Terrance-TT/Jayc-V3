@@ -7,7 +7,7 @@ import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
 import type { Messages } from '~/lib/.server/llm/stream-text';
 import { searchFacts, queryFromMessage } from '~/lib/.server/fact-check/search';
 import { createScopedLogger } from '~/utils/logger';
-import { isClarifyingQuestions, type ThinkingMode } from '~/utils/thinking';
+import { countThinkLongerChoices, isClarifyingQuestions, parseControlTag, type ThinkingMode } from '~/utils/thinking';
 import type { ByokConfig } from '~/lib/.server/llm/model';
 
 const logger = createScopedLogger('ChatAction');
@@ -78,6 +78,16 @@ async function chatAction(args: ActionFunctionArgs) {
   const webSearch = await maybeSearchWeb(messages, env);
 
   /**
+   * Thinking-choice control replies (think_longer / build_now) bypass the
+   * normal generation resolution entirely — the pipeline routes them.
+   */
+  const lastMessage = messages[messages.length - 1];
+  const control = lastMessage?.role === 'user' ? parseControlTag(lastMessage.content) : null;
+
+  // prior extensions only — the current click does not count toward its own cap
+  const extensionsUsed = control === 'think_longer' ? countThinkLongerChoices(messages.slice(0, -1)) : 0;
+
+  /**
    * The pipeline runs only when the turn deserves it: a build-like first
    * message (questions and chat skip it), or the answer to a previous set
    * of clarifying questions. Power mode pipelines regardless.
@@ -103,6 +113,8 @@ async function chatAction(args: ActionFunctionArgs) {
     projectGraph,
     webSearch,
     byok,
+    control: control ?? undefined,
+    extensionsUsed,
     isFirstBuild: pipelineWorthy,
   }).catch((error) => {
     logger.error('Generation pipeline crashed', error);

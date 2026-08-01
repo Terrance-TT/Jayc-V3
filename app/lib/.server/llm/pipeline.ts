@@ -1,5 +1,5 @@
 import { createScopedLogger } from '~/utils/logger';
-import { isClarifyingQuestions } from '~/utils/thinking';
+import { isClarifyingQuestions, THINKING_CHOICE_SENTINEL } from '~/utils/thinking';
 import { queryFromMessage, searchFacts } from '~/lib/.server/fact-check/search';
 import {
   BUILD_EFFORT,
@@ -8,6 +8,7 @@ import {
   EXPAND_MAX_TOKENS,
   LIGHT_EFFORT,
   MAX_RESPONSE_SEGMENTS,
+  MAX_THINK_EXTENSIONS,
   PLAN_EFFORT,
   PLAN_MAX_TOKENS,
   THINKING_BUDGET_MS,
@@ -20,6 +21,8 @@ import {
   BUILD_PHASE_PROMPT,
   BUILD_TIMEOUT_PROMPT,
   CONTINUE_PROMPT,
+  CONTINUE_THINKING_PROMPT,
+  CONTINUE_THINKING_SUFFIX,
   EXPAND_BRIDGE_PROMPT,
   EXPAND_PHASE_SUFFIX,
   PLAN_PHASE_SUFFIX,
@@ -43,6 +46,12 @@ interface RunGenerationParams {
 
   /** true for first-build turns (build-like first message or answered clarifying questions) */
   isFirstBuild?: boolean;
+
+  /** set when the user's message is a thinking-choice control reply */
+  control?: 'think_longer' | 'build_now';
+
+  /** prior think_longer choices in this chat (stateless cap input) */
+  extensionsUsed?: number;
 }
 
 interface PassParams {
@@ -94,30 +103,33 @@ function createTextAccumulator() {
 }
 
 /**
- * Drives the whole generation for one chat request: resolves the plan,
- * runs the thinking phases when pipelined, then the build pass with
- * continuations, and closes the stream. The caller returns the HTTP
- * response immediately while this runs in the background.
+ * Drives the whole generation for one chat request: thinking-choice control
+ * replies first, then pipeline or single-pass generation. The caller
+ * returns the HTTP response immediately while this runs in the background.
  */
 export async function runGeneration(params: RunGenerationParams): Promise<void> {
   const { stream, generation } = params;
 
   try {
-    if (generation.pipeline) {
-      const { buildMessages, timedOut } = await runThinkingPhases(params);
+    if (params.control === 'think_longer') {
+      await runThinkLonger(params);
+    } else if (params.control === 'build_now') {
+      await runBuildNow(params);
+    } else if (generation.pipeline) {
+      const outcome = await runThinkingPhases(params);
 
-      if (buildMessages === null) {
-        // clarifying questions were asked — the reply is complete
+      if (outcome.kind !== 'build') {
+        // clarifying questions or a thinking choice — the reply is complete
         stream.close();
 
         return;
       }
 
-      await params.stream.switchSource(markerStream(timedOut ? BUILD_TIMEOUT_MARKER : BUILD_MARKER));
+      await params.stream.switchSource(markerStream(outcome.timedOut ? THINKING_CAP_MARKER : BUILD_MARKER));
 
-      await streamWithContinuations(params, buildMessages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+      await streamWithContinuations(params, outcome.messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
 
-      await maybeVerifyFacts(params, buildMessages);
+      await maybeVerifyFacts(params, outcome.messages);
     } else {
       await streamWithContinuations(params, params.messages, generation.effort, generation.maxTokens);
     }
@@ -130,13 +142,158 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
 }
 
 /**
+ * The user chose "think longer" at the thinking-clock choice: continue the
+ * design in a fresh window (up to MAX_THINK_EXTENSIONS times), then build.
+ * At the cap, build immediately instead of offering another choice.
+ */
+async function runThinkLonger(params: RunGenerationParams): Promise<void> {
+  const messages = [...params.messages];
+
+  // replace the control tag with a real instruction for the model
+  const last = messages[messages.length - 1];
+
+  if (last?.role === 'user') {
+    messages[messages.length - 1] = { role: 'user', content: CONTINUE_THINKING_PROMPT };
+  }
+
+  if ((params.extensionsUsed ?? 0) >= MAX_THINK_EXTENSIONS) {
+    logger.info('Think-longer cap reached — building instead of extending again');
+    await params.stream.switchSource(markerStream(THINKING_CAP_MARKER));
+
+    messages.push({ role: 'user', content: BUILD_TIMEOUT_PROMPT });
+
+    await streamWithContinuations(params, messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+
+    return;
+  }
+
+  await params.stream.switchSource(markerStream(THINK_LONGER_MARKER));
+
+  const outcome = await runContinueThinking(params, messages);
+
+  if (outcome.kind !== 'build') {
+    // another clock fire — the choice note is already on the stream
+    return;
+  }
+
+  await params.stream.switchSource(markerStream(outcome.timedOut ? THINKING_CAP_MARKER : BUILD_MARKER));
+
+  await streamWithContinuations(params, outcome.messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+}
+
+/**
+ * The user chose "build now": build immediately from the salvaged design
+ * (the timeout semantics — plan skeleton is complete, gaps are filled with
+ * house-style defaults and product judgment).
+ */
+async function runBuildNow(params: RunGenerationParams): Promise<void> {
+  const messages = [...params.messages];
+
+  // replace the control tag with the build instruction
+  const last = messages[messages.length - 1];
+
+  if (last?.role === 'user') {
+    messages[messages.length - 1] = { role: 'user', content: BUILD_TIMEOUT_PROMPT };
+  }
+
+  await params.stream.switchSource(markerStream(BUILD_TIMEOUT_MARKER));
+
+  await streamWithContinuations(params, messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+}
+
+/**
+ * One continued-thinking pass with the same clock semantics as the main
+ * thinking phases: on timeout, offer the choice again (or force the build
+ * when the extension cap is now reached).
+ */
+async function runContinueThinking(params: RunGenerationParams, messages: Messages): Promise<ThinkingOutcome> {
+  let abortedByClock = false;
+  const controller = new AbortController();
+
+  const clock = setTimeout(() => {
+    abortedByClock = true;
+    logger.warn(`Thinking extension budget (${THINKING_BUDGET_MS}ms) reached`);
+    controller.abort();
+  }, THINKING_BUDGET_MS);
+
+  try {
+    const result = await runPass(params, {
+      messages,
+      effort: EXPAND_EFFORT,
+      maxTokens: EXPAND_MAX_TOKENS,
+      systemSuffix: CONTINUE_THINKING_SUFFIX,
+      abortSignal: controller.signal,
+    });
+
+    const build = [...messages];
+
+    if (result.text.trim().length > 0) {
+      build.push({ role: 'assistant', content: result.text });
+    }
+
+    if (abortedByClock) {
+      const extensionsNowUsed = (params.extensionsUsed ?? 0) + 1;
+
+      if (extensionsNowUsed >= MAX_THINK_EXTENSIONS) {
+        build.push({ role: 'user', content: BUILD_TIMEOUT_PROMPT });
+
+        return { kind: 'build', messages: build, timedOut: true };
+      }
+
+      await params.stream.switchSource(markerStream(choiceNote()));
+
+      return { kind: 'choice' };
+    }
+
+    build.push({ role: 'user', content: BUILD_PHASE_PROMPT });
+
+    return { kind: 'build', messages: build, timedOut: false };
+  } finally {
+    clearTimeout(clock);
+  }
+}
+
+/**
  * Visible phase markers, injected between passes so the user can see the
  * pipeline move from thinking to building.
  */
 const EXPAND_MARKER = '\n\n---\n\n🕸 **Expanding the design…**\n\n';
 const BUILD_MARKER = '\n\n---\n\n🔨 **Design locked — building now.** Watch the files appear on the right.\n\n';
 const BUILD_TIMEOUT_MARKER =
-  '\n\n---\n\n🔨 **Thinking time was up — building from the current design.** Watch the files appear on the right.\n\n';
+  '\n\n---\n\n🔨 **Building from the current design.** Watch the files appear on the right.\n\n';
+const THINKING_CAP_MARKER =
+  '\n\n---\n\n🔨 **Thinking cap reached — building from the current design.** Watch the files appear on the right.\n\n';
+const THINK_LONGER_MARKER = '\n\n---\n\n🧠 **Thinking some more…**\n\n';
+
+/**
+ * Outcomes of the thinking phases: proceed to the build pass (timedOut =
+ * the clock or cap forced it), stop for clarifying questions, or stop for a
+ * thinking-clock user choice.
+ */
+type ThinkingOutcome =
+  | { kind: 'build'; messages: Messages; timedOut: boolean }
+  | { kind: 'questions' }
+  | { kind: 'choice' };
+
+/**
+ * The visible note offered when the thinking clock runs out: explains the
+ * state and presents the two choices. Carries the sentinel the client
+ * turns into buttons.
+ */
+function choiceNote(): string {
+  return [
+    '',
+    '',
+    '---',
+    '',
+    '> 🧠 **This one is genuinely complex** — the design is partway there after ~10 minutes of thinking.',
+    '> Choose below: **⏳ Think longer** — I keep deepening the design (about 10 more minutes) — or **🔨 Build now** — I build from what the design already covers and fill the gaps with my best judgment.',
+    '',
+    THINKING_CHOICE_SENTINEL,
+    '',
+    '',
+  ].join('\n');
+}
 
 /**
  * A one-frame stream carrying a marker line as a protocol-valid text part.
@@ -210,17 +367,14 @@ async function maybeVerifyFacts(params: RunGenerationParams, messages: Messages)
 }
 
 /**
- * Runs the plan and expand passes, returning the message list for the build
- * pass plus whether the thinking clock cut the design short. Thinking-phase
- * failures never lose the build: a failed pass falls back to building from
- * whatever exists, and the clock transitions to the build phase instead of
- * stopping the session. When the plan pass answers with clarifying
- * QUESTIONS instead of a plan, `buildMessages` is null — the pipeline stops
+ * Runs the plan and expand passes. Thinking-phase failures never lose the
+ * build: a failed pass falls back to building from whatever exists. When
+ * the thinking clock fires, the user chooses what happens next — unless the
+ * extension cap is already reached, in which case the build is forced.
+ * When the plan pass answers with clarifying QUESTIONS, the pipeline stops
  * there and the questions are the whole reply.
  */
-async function runThinkingPhases(
-  params: RunGenerationParams,
-): Promise<{ buildMessages: Messages | null; timedOut: boolean }> {
+async function runThinkingPhases(params: RunGenerationParams): Promise<ThinkingOutcome> {
   const thinking = [...params.messages];
 
   let abortedByClock = false;
@@ -228,9 +382,22 @@ async function runThinkingPhases(
 
   const clock = setTimeout(() => {
     abortedByClock = true;
-    logger.warn(`Thinking budget (${THINKING_BUDGET_MS}ms) reached — moving to the build phase`);
+    logger.warn(`Thinking budget (${THINKING_BUDGET_MS}ms) reached`);
     currentAbort?.abort();
   }, THINKING_BUDGET_MS);
+
+  // clock handling shared by both phases: choice, or forced build at the cap
+  const onClock = async (): Promise<ThinkingOutcome> => {
+    if ((params.extensionsUsed ?? 0) >= MAX_THINK_EXTENSIONS) {
+      thinking.push({ role: 'user', content: BUILD_TIMEOUT_PROMPT });
+
+      return { kind: 'build', messages: thinking, timedOut: true };
+    }
+
+    await params.stream.switchSource(markerStream(choiceNote()));
+
+    return { kind: 'choice' };
+  };
 
   try {
     // phase 1: quick, powerful core draft (or clarifying questions)
@@ -253,7 +420,7 @@ async function runThinkingPhases(
          */
         logger.info('Plan phase returned clarifying questions — pausing the pipeline for the answer');
 
-        return { buildMessages: null, timedOut: false };
+        return { kind: 'questions' };
       }
 
       if (plan.text.trim().length > 0) {
@@ -263,13 +430,11 @@ async function runThinkingPhases(
       logger.warn('Plan phase failed — falling back to a direct build', error);
       thinking.push({ role: 'user', content: BUILD_PHASE_PROMPT });
 
-      return { buildMessages: thinking, timedOut: false };
+      return { kind: 'build', messages: thinking, timedOut: false };
     }
 
     if (abortedByClock) {
-      thinking.push({ role: 'user', content: BUILD_TIMEOUT_PROMPT });
-
-      return { buildMessages: thinking, timedOut: true };
+      return onClock();
     }
 
     // phase 2: spiderweb expansion of the draft
@@ -292,14 +457,18 @@ async function runThinkingPhases(
         thinking.push({ role: 'assistant', content: expanded.text });
       }
 
-      thinking.push({ role: 'user', content: abortedByClock ? BUILD_TIMEOUT_PROMPT : BUILD_PHASE_PROMPT });
+      if (abortedByClock) {
+        return onClock();
+      }
 
-      return { buildMessages: thinking, timedOut: abortedByClock };
+      thinking.push({ role: 'user', content: BUILD_PHASE_PROMPT });
+
+      return { kind: 'build', messages: thinking, timedOut: false };
     } catch (error) {
       logger.warn('Expand phase failed — building from the plan only', error);
       thinking.push({ role: 'user', content: BUILD_PHASE_PROMPT });
 
-      return { buildMessages: thinking, timedOut: false };
+      return { kind: 'build', messages: thinking, timedOut: false };
     }
   } finally {
     clearTimeout(clock);
