@@ -93,7 +93,9 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
 
   try {
     if (generation.pipeline) {
-      const buildMessages = await runThinkingPhases(params);
+      const { buildMessages, timedOut } = await runThinkingPhases(params);
+
+      await params.stream.switchSource(markerStream(timedOut ? BUILD_TIMEOUT_MARKER : BUILD_MARKER));
 
       await streamWithContinuations(params, buildMessages, BUILD_EFFORT, BUILD_MAX_TOKENS);
     } else {
@@ -108,12 +110,36 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
 }
 
 /**
- * Runs the plan and expand passes, returning the message list for the build
- * pass. Thinking-phase failures never lose the build: a failed pass falls
- * back to building from whatever exists, and the thinking clock transitions
- * to the build phase instead of stopping the session.
+ * Visible phase markers, injected between passes so the user can see the
+ * pipeline move from thinking to building.
  */
-async function runThinkingPhases(params: RunGenerationParams): Promise<Messages> {
+const EXPAND_MARKER = '\n\n---\n\n🕸 **Expanding the design…**\n\n';
+const BUILD_MARKER = '\n\n---\n\n🔨 **Design locked — building now.** Watch the files appear on the right.\n\n';
+const BUILD_TIMEOUT_MARKER =
+  '\n\n---\n\n🔨 **Thinking time was up — building from the current design.** Watch the files appear on the right.\n\n';
+
+/**
+ * A one-frame stream carrying a marker line as a protocol-valid text part.
+ */
+function markerStream(text: string): ReadableStream<Uint8Array> {
+  const frame = new TextEncoder().encode(`0:${JSON.stringify(text)}\n`);
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(frame);
+      controller.close();
+    },
+  });
+}
+
+/**
+ * Runs the plan and expand passes, returning the message list for the build
+ * pass plus whether the thinking clock cut the design short. Thinking-phase
+ * failures never lose the build: a failed pass falls back to building from
+ * whatever exists, and the clock transitions to the build phase instead of
+ * stopping the session.
+ */
+async function runThinkingPhases(params: RunGenerationParams): Promise<{ buildMessages: Messages; timedOut: boolean }> {
   const thinking = [...params.messages];
 
   let abortedByClock = false;
@@ -145,18 +171,21 @@ async function runThinkingPhases(params: RunGenerationParams): Promise<Messages>
       logger.warn('Plan phase failed — falling back to a direct build', error);
       thinking.push({ role: 'user', content: BUILD_PHASE_PROMPT });
 
-      return thinking;
+      return { buildMessages: thinking, timedOut: false };
     }
 
     if (abortedByClock) {
       thinking.push({ role: 'user', content: BUILD_TIMEOUT_PROMPT });
 
-      return thinking;
+      return { buildMessages: thinking, timedOut: true };
     }
 
     // phase 2: spiderweb expansion of the draft
     try {
       thinking.push({ role: 'user', content: EXPAND_BRIDGE_PROMPT });
+
+      await params.stream.switchSource(markerStream(EXPAND_MARKER));
+
       currentAbort = new AbortController();
 
       const expanded = await runPass(params, {
@@ -172,12 +201,14 @@ async function runThinkingPhases(params: RunGenerationParams): Promise<Messages>
       }
 
       thinking.push({ role: 'user', content: abortedByClock ? BUILD_TIMEOUT_PROMPT : BUILD_PHASE_PROMPT });
+
+      return { buildMessages: thinking, timedOut: abortedByClock };
     } catch (error) {
       logger.warn('Expand phase failed — building from the plan only', error);
       thinking.push({ role: 'user', content: BUILD_PHASE_PROMPT });
-    }
 
-    return thinking;
+      return { buildMessages: thinking, timedOut: false };
+    }
   } finally {
     clearTimeout(clock);
   }

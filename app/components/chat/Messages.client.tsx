@@ -41,7 +41,8 @@ function StreamingElapsed() {
 
   return (
     <div className="text-xs text-bolt-elements-textTertiary">
-      Working… {formatElapsed(seconds)} — deep reasoning streams in the Thinking box above; you can stop anytime.
+      Working… {formatElapsed(seconds)} — thinking is capped at ~10 min, then the build runs to completion. You can stop
+      anytime.
     </div>
   );
 }
