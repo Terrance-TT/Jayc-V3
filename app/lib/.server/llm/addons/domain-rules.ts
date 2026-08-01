@@ -1,9 +1,9 @@
 /**
- * PARKED — not wired into any prompt (see ../CONTRACT.md).
- *
- * The domain-rules section, removed from the always-on prompt during the
- * golden-scope revert. The verify-phase suffix (prompts.ts) already covers
- * post-build rule checking, so this is dormant by design.
+ * The domain-rules prompt section, injected only when the request encodes
+ * real-world rules (physics, finance, health, measurements, conventions —
+ * see index.ts for the trigger). Un-parked: the verify phase only covers
+ * rule checking when a Tavily key is configured, so the conventions belong
+ * in the request path too.
  */
 export const DOMAIN_RULES_ADDON = `
 <domain_rules>

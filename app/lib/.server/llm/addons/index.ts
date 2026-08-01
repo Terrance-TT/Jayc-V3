@@ -1,4 +1,5 @@
 import { DEPLOYMENT_ADDON } from './deployment';
+import { DOMAIN_RULES_ADDON } from './domain-rules';
 import { INTERACTIVE_ADDON } from './interactive';
 import { SECRETS_ADDON } from './secrets';
 
@@ -22,6 +23,10 @@ const DEPLOYMENT_PATTERN =
 const INTERACTIVE_PATTERN =
   /\b(canvas|svg|games?|gaming|simulat\w*|animat\w*|diagrams?|visuali\w*|drag(ging)?|physics|charts?|maps?|trainer|arcade|paddle|ball)\b/i;
 
+// real-world rules (physics, finance, health, measurements, conventions) — a wrong constant is the classic confident error
+const DOMAIN_RULES_PATTERN =
+  /\b(physics|gravity|financ\w+|mortgage|interest|taxes?|currency|health|dosage|nutrition|measurements?|conversions?|simulat\w*|sailing|wind|chemistry|astronomy)\b/i;
+
 /**
  * Returns the prompt addon sections relevant to this request, or an empty
  * string when nothing triggers (the default — keeping the prompt lean).
@@ -40,6 +45,10 @@ export function getTriggeredAddons({ userMessage, projectGraph }: AddonTriggerCo
 
   if (INTERACTIVE_PATTERN.test(userMessage)) {
     addons.push(INTERACTIVE_ADDON);
+  }
+
+  if (DOMAIN_RULES_PATTERN.test(userMessage)) {
+    addons.push(DOMAIN_RULES_ADDON);
   }
 
   return addons.length > 0 ? `${addons.join('\n')}\n` : '';

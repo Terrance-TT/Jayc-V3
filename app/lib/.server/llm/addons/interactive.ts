@@ -16,5 +16,13 @@ export const INTERACTIVE_ADDON = `
     3. Draw the main subject ABOVE background shapes (z-order): hulls, arenas, and grids render first; the thing the user watches renders last.
 
     4. Keep every label fully inside the canvas with margin: no clipped, truncated, or overlapping text — measure or inset labels from edges.
+
+    5. Respect the rendering math: the y-axis points DOWN in both SVG and canvas, and canvas angles are in RADIANS with positive = clockwise on screen. Convert degrees at the boundary and state the conversion in a comment.
+
+    6. rotate()/transform act around the ORIGIN, not the shape's center: translate to the pivot, rotate, translate back (or set an explicit transform-origin) — a rotation around the wrong point flings the shape off-screen.
+
+    7. When a viewBox is set, ALL coordinates live in viewBox units, not pixels — compute positions in viewBox space and let the browser scale.
+
+    8. Measure text before placing it: use ctx.measureText (canvas) or estimate width ≈ 0.6 × font-size × character count (SVG), then inset labels by at least half that width from the edges.
 </interactive_conventions>
 `;

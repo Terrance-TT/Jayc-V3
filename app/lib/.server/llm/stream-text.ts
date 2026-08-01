@@ -65,9 +65,16 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
   const requestedMaxTokens = requestOptions?.maxTokens ?? LIGHT_MAX_TOKENS;
   const maxTokens = byok ? Math.min(requestedMaxTokens, BYOK_MAX_TOKENS) : requestedMaxTokens;
 
-  // conditional addons ride only when the request actually involves them
-  const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
-  const addons = getTriggeredAddons({ userMessage: lastUserMessage, projectGraph });
+  /**
+   * Conditional addons ride only when the request actually involves them.
+   * Match against the FIRST user message as well as the last: pipeline
+   * passes (build/review/verify) end in bridge prompts, so the original
+   * request would otherwise never trigger its conventions on the passes
+   * that write and review the code.
+   */
+  const userTexts = messages.filter((message) => message.role === 'user').map((message) => message.content);
+  const matchText = userTexts.length > 1 ? `${userTexts[0]}\n${userTexts[userTexts.length - 1]}` : userTexts[0] ?? '';
+  const addons = getTriggeredAddons({ userMessage: matchText, projectGraph });
 
   return _streamText({
     model: getMoonshotModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false, byok),

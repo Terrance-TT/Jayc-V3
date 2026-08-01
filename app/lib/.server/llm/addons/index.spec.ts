@@ -44,6 +44,16 @@ describe('getTriggeredAddons', () => {
     );
   });
 
+  it('injects the domain-rules addon when the app encodes real-world rules', () => {
+    expect(getTriggeredAddons({ userMessage: 'build a mortgage calculator' })).toContain('<domain_rules>');
+    expect(getTriggeredAddons({ userMessage: 'create a sailing app to teach wind direction' })).toContain(
+      '<domain_rules>',
+    );
+    expect(getTriggeredAddons({ userMessage: 'build a todo app in React using Tailwind' })).not.toContain(
+      '<domain_rules>',
+    );
+  });
+
   it('does not inject the interactive addon for non-visual requests', () => {
     expect(getTriggeredAddons({ userMessage: 'Build a todo app in React using Tailwind' })).toBe('');
     expect(getTriggeredAddons({ userMessage: 'add stripe checkout please' })).not.toContain(
@@ -51,6 +61,6 @@ describe('getTriggeredAddons', () => {
     );
 
     // keyword-less visual apps are covered by the always-on review pass instead
-    expect(getTriggeredAddons({ userMessage: 'create a sailing app to teach wind direction' })).toBe('');
+    expect(getTriggeredAddons({ userMessage: 'create a geometry teaching app' })).toBe('');
   });
 });
