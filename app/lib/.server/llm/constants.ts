@@ -60,6 +60,10 @@ export const BUILD_MAX_TOKENS = 65_536;
 export const VERIFY_EFFORT: ReasoningEffort = 'high';
 export const VERIFY_MAX_TOKENS = 16_384;
 
+// review phase (post-build second-opinion pass, first builds except turbo)
+export const REVIEW_EFFORT: ReasoningEffort = 'high';
+export const REVIEW_MAX_TOKENS = 16_384;
+
 /**
  * Wall-clock budget for the two THINKING phases of a pipeline run. Reaching
  * it never stops the session: the user gets a choice — keep thinking in a
