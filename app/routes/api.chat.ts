@@ -105,13 +105,6 @@ async function chatAction(args: ActionFunctionArgs) {
   const pipelineWorthy = isComplexFirstBuild || hasPendingQuestions(messages);
   const generation = resolveGeneration(mode, pipelineWorthy);
 
-  /**
-   * Control replies (think_longer / build_now) only exist after a thinking
-   * clock fired mid-pipeline — the build they trigger IS the first build,
-   * so post-build phases (review, verify) must run for them too.
-   */
-  const isFirstBuild = pipelineWorthy || control !== null;
-
   const stream = new SwitchableStream();
 
   /**
@@ -129,7 +122,7 @@ async function chatAction(args: ActionFunctionArgs) {
     byok,
     control: control ?? undefined,
     extensionsUsed,
-    isFirstBuild,
+    isFirstBuild: pipelineWorthy,
     skipReview: mode === 'turbo',
   }).catch((error) => {
     logger.error('Generation pipeline crashed', error);
