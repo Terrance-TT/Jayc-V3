@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { getAuth } from '@clerk/remix/ssr.server';
 import { StreamingTextResponse, parseStreamPart } from 'ai';
-import { streamText } from '~/lib/.server/llm/stream-text';
+import { streamText } from '~/lib/.server/llm';
 import { stripIndents } from '~/utils/stripIndent';
 
 const encoder = new TextEncoder();

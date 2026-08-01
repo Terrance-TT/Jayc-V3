@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { LIGHT_EFFORT, LIGHT_MAX_TOKENS, looksLikeBuildRequest, resolveGeneration } from './constants';
+import {
+  isComplexBuildRequest,
+  LIGHT_EFFORT,
+  LIGHT_MAX_TOKENS,
+  looksLikeBuildRequest,
+  resolveGeneration,
+  SINGLE_EFFORT,
+  SINGLE_MAX_TOKENS,
+} from './constants';
 
 describe('resolveGeneration', () => {
   it('runs the pipeline for power mode on any turn', () => {
@@ -11,12 +19,12 @@ describe('resolveGeneration', () => {
     expect(resolveGeneration('auto', true)).toEqual({ pipeline: true });
     expect(resolveGeneration('auto', false)).toEqual({
       pipeline: false,
-      effort: LIGHT_EFFORT,
-      maxTokens: LIGHT_MAX_TOKENS,
+      effort: SINGLE_EFFORT,
+      maxTokens: SINGLE_MAX_TOKENS,
     });
   });
 
-  it('never runs the pipeline for turbo', () => {
+  it('never runs the pipeline for turbo and stays light', () => {
     expect(resolveGeneration('turbo', true)).toEqual({
       pipeline: false,
       effort: LIGHT_EFFORT,
@@ -27,6 +35,12 @@ describe('resolveGeneration', () => {
       effort: LIGHT_EFFORT,
       maxTokens: LIGHT_MAX_TOKENS,
     });
+  });
+
+  it('gives auto the golden recipe (single deep pass) on non-pipeline turns', () => {
+    const plan = resolveGeneration('auto', false);
+
+    expect(plan).toEqual({ pipeline: false, effort: 'high', maxTokens: 65_536 });
   });
 });
 
@@ -46,5 +60,28 @@ describe('looksLikeBuildRequest', () => {
   it('rejects very short messages', () => {
     expect(looksLikeBuildRequest('hi')).toBe(false);
     expect(looksLikeBuildRequest('make a game')).toBe(false);
+  });
+});
+
+describe('isComplexBuildRequest', () => {
+  it('treats simple and medium builds as not complex', () => {
+    expect(isComplexBuildRequest('Build a todo app in React using Tailwind')).toBe(false);
+    expect(isComplexBuildRequest('Make a space invaders game')).toBe(false);
+    expect(isComplexBuildRequest('create a sailing app to teach beginners wind direction')).toBe(false);
+  });
+
+  it('flags long requests as complex', () => {
+    const long =
+      'Build a recipe sharing platform where home cooks can publish their recipes with step by step photos and full ingredient lists, rate and review other peoples dishes, create weekly meal plans for their families, and automatically generate categorized shopping lists from any of the plans they choose to follow';
+
+    expect(isComplexBuildRequest(long)).toBe(true);
+  });
+
+  it('flags multi-segment requests as complex', () => {
+    expect(isComplexBuildRequest('Build a chat app. It needs channels and DMs. Add typing indicators too.')).toBe(true);
+  });
+
+  it('flags multi-feature requests as complex', () => {
+    expect(isComplexBuildRequest('Build an app with auth, a dashboard, and Stripe payments')).toBe(true);
   });
 });

@@ -1,10 +1,7 @@
 import { type LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { getAuth } from '@clerk/remix/ssr.server';
 import { generateText } from 'ai';
-import { getAPIKey } from '~/lib/.server/llm/api-key';
-import { getMoonshotModel } from '~/lib/.server/llm/model';
-import { getSystemPrompt } from '~/lib/.server/llm/prompts';
-import { streamText } from '~/lib/.server/llm/stream-text';
+import { getAPIKey, getMoonshotModel, getSystemPrompt, streamText } from '~/lib/.server/llm';
 import { searchFacts } from '~/lib/.server/fact-check/search';
 import { WORK_DIR } from '~/utils/constants';
 

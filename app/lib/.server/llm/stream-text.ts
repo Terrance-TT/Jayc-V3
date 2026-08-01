@@ -1,6 +1,7 @@
 import { streamText as _streamText, convertToCoreMessages } from 'ai';
 import { getAPIKey } from '~/lib/.server/llm/api-key';
 import { getMoonshotModel, type ByokConfig } from '~/lib/.server/llm/model';
+import { getTriggeredAddons } from '~/lib/.server/llm/addons';
 import { WORK_DIR } from '~/utils/constants';
 import { describeControlTags, hasThinking, stripThinking } from '~/utils/thinking';
 import { LIGHT_EFFORT, LIGHT_MAX_TOKENS, type ReasoningEffort } from './constants';
@@ -64,9 +65,13 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
   const requestedMaxTokens = requestOptions?.maxTokens ?? LIGHT_MAX_TOKENS;
   const maxTokens = byok ? Math.min(requestedMaxTokens, BYOK_MAX_TOKENS) : requestedMaxTokens;
 
+  // conditional addons ride only when the request actually involves them
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+  const addons = getTriggeredAddons({ userMessage: lastUserMessage, projectGraph });
+
   return _streamText({
     model: getMoonshotModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false, byok),
-    system: getSystemPrompt(WORK_DIR, projectGraph, webSearch) + (systemSuffix ?? ''),
+    system: getSystemPrompt(WORK_DIR, projectGraph, webSearch) + addons + (systemSuffix ?? ''),
     temperature: 1, // K3 requires temperature=1
 
     /**

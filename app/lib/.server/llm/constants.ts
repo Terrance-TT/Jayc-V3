@@ -30,9 +30,17 @@ export interface PipelineGeneration {
 
 export type GenerationPlan = SinglePassGeneration | PipelineGeneration;
 
-// single-pass settings (turbo, and auto on follow-ups)
+// turbo: one light pass
 export const LIGHT_EFFORT: ReasoningEffort = 'low';
-export const LIGHT_MAX_TOKENS = 32_768;
+export const LIGHT_MAX_TOKENS = 49_152;
+
+/**
+ * Auto on non-pipeline turns: one deep pass at high effort — the "golden
+ * recipe" (single pass, high effort, generous budget), bounded, with
+ * continuations as the safety net.
+ */
+export const SINGLE_EFFORT: ReasoningEffort = 'high';
+export const SINGLE_MAX_TOKENS = 65_536;
 
 /**
  * Pipeline phase bounds. Phase 1 runs LIGHT: its only job is a quick core
@@ -68,8 +76,10 @@ export const MAX_RESPONSE_SEGMENTS = 6;
 /**
  * Resolves a requested thinking mode into a concrete generation plan.
  * `pipelineWorthy` is the server-side judgment that this turn deserves the
- * full pipeline (a build-like first message or a freshly answered set of
- * clarifying questions) — power mode ignores it and always pipelines.
+ * full pipeline (a complex build-like first message or a freshly answered
+ * set of clarifying questions) — power mode ignores it and always
+ * pipelines. Everything else is one pass: light for turbo, the deep
+ * golden-recipe pass for auto.
  */
 export function resolveGeneration(mode: ThinkingMode, pipelineWorthy: boolean): GenerationPlan {
   if (mode === 'power') {
@@ -80,7 +90,11 @@ export function resolveGeneration(mode: ThinkingMode, pipelineWorthy: boolean): 
     return { pipeline: true };
   }
 
-  return { pipeline: false, effort: LIGHT_EFFORT, maxTokens: LIGHT_MAX_TOKENS };
+  if (mode === 'turbo') {
+    return { pipeline: false, effort: LIGHT_EFFORT, maxTokens: LIGHT_MAX_TOKENS };
+  }
+
+  return { pipeline: false, effort: SINGLE_EFFORT, maxTokens: SINGLE_MAX_TOKENS };
 }
 
 // matches openings that read as questions, not build requests
@@ -105,4 +119,34 @@ export function looksLikeBuildRequest(message: string): boolean {
   }
 
   return true;
+}
+
+// signals that the request is a genuinely complex, multi-part build
+const COMPLEXITY_SIGNAL_PATTERN =
+  /\b(auth|login|log[ -]?in|sign[ -]?up|signup|payments?|stripe|checkout|databases?|dashboards?|admin|real[ -]?time|multiplayer|websockets?|apis?|backends?|cms|blogs?|stores?|carts?|bookings?|social|feeds?|uploads?|files?)\b/gi;
+
+/**
+ * Decides whether a build request is COMPLEX enough to deserve the
+ * plan→expand→build pipeline. Simple and medium builds get the golden
+ * recipe (one deep pass) — faster and just as good; the pipeline is
+ * reserved for genuinely multi-part applications.
+ */
+export function isComplexBuildRequest(message: string): boolean {
+  const text = message.trim();
+
+  const wordCount = text.split(/\s+/).length;
+
+  if (wordCount >= 40) {
+    return true;
+  }
+
+  const segmentCount = text.split(/[.!?\n;]+/).filter((segment) => segment.trim().length > 0).length;
+
+  if (segmentCount >= 3) {
+    return true;
+  }
+
+  const signals = text.match(COMPLEXITY_SIGNAL_PATTERN) ?? [];
+
+  return signals.length >= 3;
 }

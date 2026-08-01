@@ -1,14 +1,19 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { getAuth } from '@clerk/remix/ssr.server';
-import { DEFAULT_THINKING_MODE, looksLikeBuildRequest, resolveGeneration } from '~/lib/.server/llm/constants';
-import { runGeneration } from '~/lib/.server/llm/pipeline';
-import SwitchableStream from '~/lib/.server/llm/switchable-stream';
-import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
-import type { Messages } from '~/lib/.server/llm/stream-text';
+import {
+  DEFAULT_THINKING_MODE,
+  isComplexBuildRequest,
+  looksLikeBuildRequest,
+  resolveGeneration,
+  runGeneration,
+  SwitchableStream,
+  withHeartbeat,
+  type ByokConfig,
+  type Messages,
+} from '~/lib/.server/llm';
 import { searchFacts, queryFromMessage } from '~/lib/.server/fact-check/search';
 import { createScopedLogger } from '~/utils/logger';
 import { countThinkLongerChoices, isClarifyingQuestions, parseControlTag, type ThinkingMode } from '~/utils/thinking';
-import type { ByokConfig } from '~/lib/.server/llm/model';
 
 const logger = createScopedLogger('ChatAction');
 
@@ -88,14 +93,16 @@ async function chatAction(args: ActionFunctionArgs) {
   const extensionsUsed = control === 'think_longer' ? countThinkLongerChoices(messages.slice(0, -1)) : 0;
 
   /**
-   * The pipeline runs only when the turn deserves it: a build-like first
-   * message (questions and chat skip it), or the answer to a previous set
-   * of clarifying questions. Power mode pipelines regardless.
+   * The pipeline runs only when the turn deserves it: a COMPLEX build-like
+   * first message, or the answer to a previous set of clarifying questions.
+   * Simple/medium builds get the single deep golden pass; questions and
+   * chat get a fast single pass. Power mode pipelines regardless.
    */
   const firstMessage = messages[0];
   const isBuildLikeFirstMessage =
     messages.length === 1 && firstMessage?.role === 'user' && looksLikeBuildRequest(firstMessage.content);
-  const pipelineWorthy = isBuildLikeFirstMessage || hasPendingQuestions(messages);
+  const isComplexFirstBuild = isBuildLikeFirstMessage && isComplexBuildRequest(firstMessage.content);
+  const pipelineWorthy = isComplexFirstBuild || hasPendingQuestions(messages);
   const generation = resolveGeneration(mode, pipelineWorthy);
 
   const stream = new SwitchableStream();
