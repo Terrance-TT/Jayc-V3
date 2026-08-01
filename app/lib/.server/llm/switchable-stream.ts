@@ -32,22 +32,6 @@ export default class SwitchableStream extends TransformStream {
     this._switches++;
   }
 
-  /**
-   * Enqueues a raw chunk outside of any source stream (e.g. the time-budget
-   * pause note in api.chat.ts). Ignored once the stream is closed.
-   */
-  inject(chunk: Uint8Array) {
-    if (this._closed) {
-      return;
-    }
-
-    try {
-      this._controller?.enqueue(chunk);
-    } catch {
-      // controller already terminated — nothing to inject into
-    }
-  }
-
   private async _pumpStream() {
     if (!this._currentReader || !this._controller) {
       throw new Error('Stream is not properly initialized');
@@ -81,6 +65,29 @@ export default class SwitchableStream extends TransformStream {
     }
 
     this._controller?.terminate();
+  }
+
+  /**
+   * Errors the stream (client sees a failed response instead of a clean
+   * end). Used when the generation pipeline crashes and there is nothing
+   * more to send. Idempotent, like close().
+   */
+  error(cause: unknown) {
+    if (this._closed) {
+      return;
+    }
+
+    this._closed = true;
+
+    if (this._currentReader) {
+      this._currentReader.cancel();
+    }
+
+    try {
+      this._controller?.error(cause);
+    } catch {
+      // controller already terminated
+    }
   }
 
   get switches() {

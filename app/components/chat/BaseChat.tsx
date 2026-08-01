@@ -5,6 +5,7 @@ import { Menu } from '~/components/sidebar/Menu.client';
 import { IconButton } from '~/components/ui/IconButton';
 import { Workbench } from '~/components/workbench/Workbench.client';
 import { classNames } from '~/utils/classNames';
+import type { ThinkingMode } from '~/utils/thinking';
 import { Messages } from './Messages.client';
 import { SendButton } from './SendButton.client';
 
@@ -21,16 +22,14 @@ interface BaseChatProps {
   enhancingPrompt?: boolean;
   promptEnhanced?: boolean;
   factChecking?: boolean;
-  turboMode?: boolean;
-  showContinue?: boolean;
+  thinkingMode?: ThinkingMode;
   input?: string;
   handleStop?: () => void;
   sendMessage?: (event: React.UIEvent, messageInput?: string) => void;
   handleInputChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   enhancePrompt?: () => void;
   factCheck?: () => void;
-  onToggleTurbo?: () => void;
-  onContinue?: (event: React.UIEvent) => void;
+  onCycleThinkingMode?: () => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -42,6 +41,30 @@ const EXAMPLE_PROMPTS = [
 ];
 
 const TEXTAREA_MIN_HEIGHT = 76;
+
+const MODE_DISPLAY = {
+  auto: {
+    icon: 'i-ph:sparkle',
+    label: 'Auto',
+    title: 'Auto: plans first, thinks deeply, then builds on new projects — fast follow-ups. Click for Turbo.',
+  },
+  turbo: {
+    icon: 'i-ph:lightning-fill',
+    label: 'Turbo',
+    title: 'Turbo: fastest answers — one light pass on every request. Click for Power.',
+  },
+  power: {
+    icon: 'i-ph:brain',
+    label: 'Power',
+    title: 'Power: plan → expand → build on every request — deepest, slowest. Click for Auto.',
+  },
+} as const;
+
+const MODE_HINT = {
+  auto: 'Auto: quick plan, deep design, then build on new projects — fast follow-ups.',
+  turbo: 'Turbo: fastest answers with light thinking.',
+  power: 'Power: plan → expand → build on every request — slowest, deepest.',
+} as const;
 
 export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
   (
@@ -55,16 +78,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       enhancingPrompt = false,
       promptEnhanced = false,
       factChecking = false,
-      turboMode = true,
-      showContinue = false,
+      thinkingMode = 'auto',
       messages,
       input = '',
       sendMessage,
       handleInputChange,
       enhancePrompt,
       factCheck,
-      onToggleTurbo,
-      onContinue,
+      onCycleThinkingMode,
       handleStop,
     },
     ref,
@@ -213,38 +234,13 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         </IconButton>
                       )}
                       <IconButton
-                        title={
-                          turboMode
-                            ? 'Turbo mode: much faster responses with lighter thinking. Click to switch to Power mode.'
-                            : 'Power mode: deeper thinking, slower and pricier responses. Click to switch to Turbo mode.'
-                        }
-                        className={classNames({
-                          'text-bolt-elements-item-contentAccent!': turboMode,
-                        })}
-                        onClick={() => onToggleTurbo?.()}
+                        title={MODE_DISPLAY[thinkingMode].title}
+                        className="text-bolt-elements-item-contentAccent!"
+                        onClick={() => onCycleThinkingMode?.()}
                       >
-                        {turboMode ? (
-                          <>
-                            <div className="i-ph:lightning-fill text-xl"></div>
-                            <div className="ml-1.5">Turbo</div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="i-ph:brain text-xl"></div>
-                            <div className="ml-1.5">Power</div>
-                          </>
-                        )}
+                        <div className={`${MODE_DISPLAY[thinkingMode].icon} text-xl`}></div>
+                        <div className="ml-1.5">{MODE_DISPLAY[thinkingMode].label}</div>
                       </IconButton>
-                      {showContinue && (
-                        <IconButton
-                          title="Continue the paused response"
-                          className="text-bolt-elements-item-contentAccent!"
-                          onClick={(event) => onContinue?.(event)}
-                        >
-                          <div className="i-ph:play-fill text-xl"></div>
-                          <div className="ml-1.5">Continue</div>
-                        </IconButton>
-                      )}
                     </div>
                     {input.length > 3 ? (
                       <div className="text-xs text-bolt-elements-textTertiary">
@@ -253,11 +249,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     ) : null}
                   </div>
                 </div>
-                {!turboMode && (
-                  <div className="mt-2 text-center text-xs text-bolt-elements-textTertiary">
-                    Power mode thinks deeply — responses can take several minutes. Switch to Turbo for quick iterations.
-                  </div>
-                )}
+                <div className="mt-2 text-center text-xs text-bolt-elements-textTertiary">
+                  {MODE_HINT[thinkingMode]}
+                </div>
                 <div className="bg-bolt-elements-background-depth-1 pb-6">{/* Ghost Element */}</div>
               </div>
             </div>

@@ -110,8 +110,8 @@ async function runStreamTest(message: string, env: Env, effort: Effort, maxToken
         maxTokens,
       },
 
-      // mirror production: 'low' maps to turbo settings, anything deeper to power
-      mode: effort === 'low' ? 'turbo' : 'power',
+      // mirror production: the requested effort with the same token budget
+      effort,
       includeThinking: true,
     });
 

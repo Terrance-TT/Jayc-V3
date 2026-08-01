@@ -9,11 +9,12 @@ export const THINKING_OPEN_TAG = '<jayc-thinking>';
 export const THINKING_CLOSE_TAG = '</jayc-thinking>';
 
 /**
- * Marks a response that the server paused at its time budget (see
- * app/routes/api.chat.ts). Invisible in rendered markdown; the client
- * detects it to offer a one-click Continue.
+ * Thinking modes selectable per request: 'auto' runs the plan→expand→build
+ * pipeline on first builds and stays light on follow-ups, 'turbo' is always
+ * a single light pass, 'power' runs the pipeline on every turn. Mirrored
+ * client-side (the toggle) and server-side (generation resolution).
  */
-export const PAUSE_SENTINEL = '<!--jayc:paused-->';
+export type ThinkingMode = 'auto' | 'turbo' | 'power';
 
 // a span may be unclosed while its thinking text is still streaming in
 const THINKING_SPAN_REGEX = /<jayc-thinking>([\s\S]*?)(?:<\/jayc-thinking>|$)/g;

@@ -1,33 +1,22 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { getAuth } from '@clerk/remix/ssr.server';
-import {
-  DEFAULT_GENERATION_MODE,
-  GENERATION_MODES,
-  MAX_RESPONSE_SEGMENTS,
-  type GenerationMode,
-} from '~/lib/.server/llm/constants';
-import { CONTINUE_PROMPT } from '~/lib/.server/llm/prompts';
-import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
+import { DEFAULT_THINKING_MODE, resolveGeneration } from '~/lib/.server/llm/constants';
+import { runGeneration } from '~/lib/.server/llm/pipeline';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
+import type { Messages } from '~/lib/.server/llm/stream-text';
 import { searchFacts } from '~/lib/.server/fact-check/search';
-import { PAUSE_SENTINEL } from '~/utils/thinking';
+import { createScopedLogger } from '~/utils/logger';
+import type { ThinkingMode } from '~/utils/thinking';
+
+const logger = createScopedLogger('ChatAction');
 
 const MAX_MESSAGES = 200;
 const MAX_MESSAGES_TOTAL_LENGTH = 800_000;
 const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 const MAX_SEARCH_QUERY_LENGTH = 300;
 
-/**
- * Wall-clock budget for one request (including continuation segments).
- * Deep-reasoning generations can run for tens of minutes; at the budget the
- * server appends a visible pause note and closes the stream cleanly — a
- * graceful pause with a one-click Continue, never a silently killed
- * connection like the 502s this replaces.
- */
-const TIME_BUDGET_MS = 8 * 60_000;
-
-const TIME_BUDGET_NOTE = `\n\n> ⏸ **Paused to stay within the time budget.** Press **Continue** (or reply "continue") and I'll pick up exactly where I left off.\n\n${PAUSE_SENTINEL}`;
+const VALID_MODES = new Set<ThinkingMode>(['auto', 'turbo', 'power']);
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -55,8 +44,10 @@ async function chatAction(args: ActionFunctionArgs) {
   const body = await request.json<{ messages: Messages; projectGraph?: unknown; mode?: unknown }>();
   const { messages } = body;
 
-  // whitelist-validate the requested generation mode; anything else uses the server default
-  const mode: GenerationMode | undefined = body.mode === 'power' || body.mode === 'turbo' ? body.mode : undefined;
+  // whitelist-validate the requested thinking mode; anything else uses the default
+  const mode: ThinkingMode = VALID_MODES.has(body.mode as ThinkingMode)
+    ? (body.mode as ThinkingMode)
+    : DEFAULT_THINKING_MODE;
 
   /**
    * Server-side validation: a non-string or oversized graph snapshot is
@@ -83,139 +74,35 @@ async function chatAction(args: ActionFunctionArgs) {
   // live web-search enrichment for new projects (dormant without TAVILY_API_KEY)
   const webSearch = await maybeSearchWeb(messages, env);
 
-  const { maxTokens } = GENERATION_MODES[mode ?? DEFAULT_GENERATION_MODE];
+  const isFirstMessage = messages.length === 1 && messages[0]?.role === 'user';
+  const generation = resolveGeneration(mode, isFirstMessage);
 
   const stream = new SwitchableStream();
 
   /**
-   * Graceful time-budget pause: injects the note as a protocol-valid text
-   * part, then closes cleanly. Closing cancels the active reader, which
-   * also aborts the upstream model call — no tokens burn after the pause.
+   * Fire-and-forget: the pipeline drives the stream (thinking phases, build
+   * pass, continuations) while the response returns immediately. The
+   * heartbeat wrapper keeps the connection warm through every silent gap.
    */
-  const pauseFrame = new TextEncoder().encode(`0:${JSON.stringify(TIME_BUDGET_NOTE)}\n`);
-  const budgetTimer = setTimeout(() => {
-    stream.inject(pauseFrame);
-    stream.close();
-  }, TIME_BUDGET_MS);
+  runGeneration({ messages, env, stream, generation, projectGraph, webSearch }).catch((error) => {
+    logger.error('Generation pipeline crashed', error);
+    stream.error(error);
+  });
 
-  const closeStream = () => {
-    clearTimeout(budgetTimer);
-
-    return stream.close();
-  };
-
-  try {
-    // guards the empty-response retry so it fires at most once per request
-    let emptyRetryUsed = false;
-
-    const options: StreamingOptions = {
-      toolChoice: 'none',
-      onFinish: async ({ text: content, finishReason }) => {
-        const isEmpty = content.trim().length === 0;
-
-        if (finishReason !== 'length' && !isEmpty) {
-          return closeStream();
-        }
-
-        if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
-          if (isEmpty) {
-            // out of segments — close rather than hang on an empty answer
-            return closeStream();
-          }
-
-          throw Error('Cannot continue message: Maximum segments reached');
-        }
-
-        if (isEmpty) {
-          /**
-           * The model produced no visible output (can happen with long
-           * reasoning at higher effort, including a 'length' finish with
-           * empty text). Retry once at turbo settings so the user never
-           * gets a silently empty answer.
-           */
-          if (emptyRetryUsed) {
-            return closeStream();
-          }
-
-          emptyRetryUsed = true;
-
-          console.log('Model returned an empty response: retrying once at turbo settings');
-
-          if (content.length > 0) {
-            // preserve whitespace-only output so message ordering stays intact
-            messages.push({ role: 'assistant', content });
-          }
-
-          messages.push({ role: 'user', content: CONTINUE_PROMPT });
-
-          const retry = await streamText(messages, env, {
-            requestOptions: options,
-            projectGraph,
-            mode: 'turbo',
-            includeThinking: true,
-          });
-
-          return stream.switchSource(retry.toAIStream());
-        }
-
-        const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
-
-        console.log(`Reached max token limit (${maxTokens}): Continuing message (${switchesLeft} switches left)`);
-
-        messages.push({ role: 'assistant', content });
-        messages.push({ role: 'user', content: CONTINUE_PROMPT });
-
-        const result = await streamText(messages, env, {
-          requestOptions: options,
-          projectGraph,
-          webSearch,
-          mode,
-          includeThinking: true,
-        });
-
-        return stream.switchSource(result.toAIStream());
-      },
-    };
-
-    const result = await streamText(messages, env, {
-      requestOptions: options,
-      projectGraph,
-      webSearch,
-      mode,
-      includeThinking: true,
-    });
-
-    stream.switchSource(result.toAIStream());
-
-    /**
-     * Heartbeats keep the response alive while the model thinks in silence
-     * (Power mode's deep reasoning can go minutes without a token; an idle
-     * stream gets killed and surfaces as a 502).
-     */
-    return new Response(withHeartbeat(stream.readable), {
-      status: 200,
-      headers: {
-        /**
-         * SSE content type (instead of text/plain): the body is a
-         * newline-delimited event stream, and marking it as such stops
-         * intermediate proxies/ISPs from buffering or killing it as an
-         * idle download. The AI SDK client parses the body generically,
-         * so this changes nothing client-side.
-         */
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache',
-      },
-    });
-  } catch (error) {
-    clearTimeout(budgetTimer);
-
-    console.log(error);
-
-    throw new Response(null, {
-      status: 500,
-      statusText: 'Internal Server Error',
-    });
-  }
+  return new Response(withHeartbeat(stream.readable), {
+    status: 200,
+    headers: {
+      /**
+       * SSE content type (instead of text/plain): the body is a
+       * newline-delimited event stream, and marking it as such stops
+       * intermediate proxies/ISPs from buffering or killing it as an
+       * idle download. The AI SDK client parses the body generically,
+       * so this changes nothing client-side.
+       */
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache',
+    },
+  });
 }
 
 /**

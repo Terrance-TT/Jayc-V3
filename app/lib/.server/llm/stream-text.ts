@@ -3,7 +3,7 @@ import { getAPIKey } from '~/lib/.server/llm/api-key';
 import { getMoonshotModel } from '~/lib/.server/llm/model';
 import { WORK_DIR } from '~/utils/constants';
 import { hasThinking, stripThinking } from '~/utils/thinking';
-import { DEFAULT_GENERATION_MODE, GENERATION_MODES, type GenerationMode } from './constants';
+import { LIGHT_EFFORT, LIGHT_MAX_TOKENS, type ReasoningEffort } from './constants';
 import { pruneMessages } from './prune-context';
 import { getSystemPrompt } from './prompts';
 
@@ -25,7 +25,7 @@ export type Messages = Message[];
 export type StreamingOptions = Omit<Parameters<typeof _streamText>[0], 'model'>;
 
 export interface StreamTextOptions {
-  /** forwarded verbatim to the AI SDK (onFinish callbacks, maxTokens overrides, …) */
+  /** forwarded verbatim to the AI SDK (onFinish, maxTokens, abortSignal, …) */
   requestOptions?: StreamingOptions;
 
   /** serialized graphify snapshot — injected into the system prompt */
@@ -34,8 +34,11 @@ export interface StreamTextOptions {
   /** web-search digest for the current request — injected into the system prompt */
   webSearch?: string;
 
-  /** generation mode; falls back to DEFAULT_GENERATION_MODE */
-  mode?: GenerationMode;
+  /** reasoning effort for this call; defaults to the light single-pass effort */
+  effort?: ReasoningEffort;
+
+  /** appended after the system prompt (pipeline phase instructions) */
+  systemSuffix?: string;
 
   /**
    * When true, the model's reasoning stream is rewritten into visible
@@ -46,13 +49,12 @@ export interface StreamTextOptions {
 }
 
 export function streamText(messages: Messages, env: Env, options?: StreamTextOptions) {
-  const { requestOptions, projectGraph, webSearch, mode, includeThinking } = options ?? {};
-  const { reasoningEffort, maxTokens } = GENERATION_MODES[mode ?? DEFAULT_GENERATION_MODE];
+  const { requestOptions, projectGraph, webSearch, effort, systemSuffix, includeThinking } = options ?? {};
 
   return _streamText({
-    model: getMoonshotModel(getAPIKey(env), env, reasoningEffort, includeThinking ?? false),
-    system: getSystemPrompt(WORK_DIR, projectGraph, webSearch),
-    maxTokens,
+    model: getMoonshotModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false),
+    system: getSystemPrompt(WORK_DIR, projectGraph, webSearch) + (systemSuffix ?? ''),
+    maxTokens: LIGHT_MAX_TOKENS,
     temperature: 1, // K3 requires temperature=1
 
     /**

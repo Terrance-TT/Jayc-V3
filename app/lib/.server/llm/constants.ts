@@ -1,35 +1,72 @@
-/**
- * Generation modes: the client sends a `mode` field with each /api/chat
- * request and the server maps it to concrete model settings here.
- *
- * Cost note: K3 reasoning tokens are billed as output tokens (~$15/M) and
- * produce NO visible stream output while the model thinks, so long reasoning
- * also leaves the connection silent and can get the stream killed
- * mid-generation (ERR_HTTP2_PROTOCOL_ERROR). Turbo mode ('low' effort, hard
- * output cap) is the fast/cheap default; Power mode ('high' effort, generous
- * budget) is opt-in for hard problems. Both modes are capped — the earlier
- * fully-uncapped MAX_TOKENS was a temporary owner request while this toggle
- * was being built.
- */
-export type GenerationMode = 'turbo' | 'power';
+import type { ThinkingMode } from '~/utils/thinking';
 
-export interface GenerationModeSettings {
-  reasoningEffort: 'low' | 'high' | 'max';
+/**
+ * Generation settings: the client sends a `mode` field with each /api/chat
+ * request and the server resolves it into a generation plan here.
+ *
+ * - turbo: single light pass (low effort, small budget) — fastest.
+ * - power: the full plan→expand→build pipeline on every turn.
+ * - auto (default): pipeline on first builds, single light pass on follow-ups.
+ *
+ * Cost note: K3 reasoning tokens are billed as output tokens (~$15/M), so
+ * every deep phase is budgeted explicitly. The pipeline's thinking phases
+ * are visible to the user (see reasoning-stream.ts) and bounded by tokens
+ * plus a wall-clock backstop that transitions into the build phase — never
+ * a session kill.
+ */
+export type ReasoningEffort = 'low' | 'high' | 'max';
+
+export const DEFAULT_THINKING_MODE: ThinkingMode = 'auto';
+
+export interface SinglePassGeneration {
+  pipeline: false;
+  effort: ReasoningEffort;
   maxTokens: number;
 }
 
-export const DEFAULT_GENERATION_MODE: GenerationMode = 'turbo';
+export interface PipelineGeneration {
+  pipeline: true;
+}
 
-export const GENERATION_MODES: Record<GenerationMode, GenerationModeSettings> = {
-  turbo: {
-    reasoningEffort: 'low',
-    maxTokens: 32_768,
-  },
-  power: {
-    reasoningEffort: 'high',
-    maxTokens: 131_072,
-  },
-};
+export type GenerationPlan = SinglePassGeneration | PipelineGeneration;
 
-// limits the number of model responses that can be returned in a single request
-export const MAX_RESPONSE_SEGMENTS = 2;
+// single-pass settings (turbo, and auto on follow-ups)
+export const LIGHT_EFFORT: ReasoningEffort = 'low';
+export const LIGHT_MAX_TOKENS = 32_768;
+
+/**
+ * Pipeline phase bounds. Phase 1 is deliberately tight so the core draft
+ * lands in well under two minutes; phase 2 gets the deep expansion budget;
+ * the build phase is bounded per segment with continuations on top.
+ */
+export const PLAN_EFFORT: ReasoningEffort = 'high';
+export const PLAN_MAX_TOKENS = 6_144;
+export const EXPAND_EFFORT: ReasoningEffort = 'high';
+export const EXPAND_MAX_TOKENS = 49_152;
+export const BUILD_EFFORT: ReasoningEffort = 'high';
+export const BUILD_MAX_TOKENS = 65_536;
+
+/**
+ * Wall-clock budget for the two THINKING phases of a pipeline run. Reaching
+ * it never stops the session: the active pass is aborted and the build
+ * phase starts with whatever the design already covers.
+ */
+export const THINKING_BUDGET_MS = 10 * 60_000;
+
+// generous ceiling: 3 pipeline phases + build continuations
+export const MAX_RESPONSE_SEGMENTS = 6;
+
+/**
+ * Resolves a requested thinking mode into a concrete generation plan.
+ */
+export function resolveGeneration(mode: ThinkingMode, isFirstMessage: boolean): GenerationPlan {
+  if (mode === 'power') {
+    return { pipeline: true };
+  }
+
+  if (mode === 'auto' && isFirstMessage) {
+    return { pipeline: true };
+  }
+
+  return { pipeline: false, effort: LIGHT_EFFORT, maxTokens: LIGHT_MAX_TOKENS };
+}

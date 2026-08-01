@@ -14,7 +14,7 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
-import { PAUSE_SENTINEL, hasThinking, stripThinking } from '~/utils/thinking';
+import { hasThinking, stripThinking, type ThinkingMode } from '~/utils/thinking';
 import { BaseChat } from './BaseChat';
 
 const toastAnimation = cssTransition({
@@ -32,21 +32,38 @@ const logger = createScopedLogger('Chat');
 const MAX_OUTGOING_MESSAGES_LENGTH = 700_000;
 
 /**
- * Storage key for the turbo/power preference; turbo defaults ON
- * (fast-by-default, Power mode is opt-in).
+ * Storage key for the thinking-mode preference. Auto is the default: deep
+ * plan→expand→build on first builds, fast follow-ups.
  */
-const TURBO_MODE_STORAGE_KEY = 'jayc_turbo_mode';
+const THINKING_MODE_STORAGE_KEY = 'jayc_thinking_mode';
+const LEGACY_TURBO_STORAGE_KEY = 'jayc_turbo_mode';
 
 // max cadence for persisting message history while a response is streaming
 const STREAMING_SAVE_INTERVAL_MS = 5_000;
 
-function readTurboModePreference(): boolean {
+function readThinkingMode(): ThinkingMode {
   try {
-    const stored = window.localStorage.getItem(TURBO_MODE_STORAGE_KEY);
+    const stored = window.localStorage.getItem(THINKING_MODE_STORAGE_KEY);
 
-    return stored === null ? true : stored === 'true';
+    if (stored === 'auto' || stored === 'turbo' || stored === 'power') {
+      return stored;
+    }
+
+    // migrate the legacy turbo/power boolean preference
+    const legacy = window.localStorage.getItem(LEGACY_TURBO_STORAGE_KEY);
+
+    if (legacy !== null) {
+      const migrated: ThinkingMode = legacy === 'false' ? 'power' : 'turbo';
+
+      window.localStorage.setItem(THINKING_MODE_STORAGE_KEY, migrated);
+      window.localStorage.removeItem(LEGACY_TURBO_STORAGE_KEY);
+
+      return migrated;
+    }
+
+    return 'auto';
   } catch {
-    return true;
+    return 'auto';
   }
 }
 
@@ -173,7 +190,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
   const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
   const [factChecking, setFactChecking] = useState(false);
-  const [turboMode, setTurboMode] = useState<boolean>(readTurboModePreference);
+  const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(readThinkingMode);
 
   const { showChat } = useStore(chatStore);
 
@@ -366,13 +383,14 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
     /**
      * The ai SDK v3 merges `body` into the POST JSON; the projectGraph field is
-     * omitted when the snapshot is empty. `mode` selects the server-side
-     * generation mode: turbo = fast/cheap, power = deep/slow.
+     * omitted when the snapshot is empty. `mode` selects the thinking depth:
+     * auto = pipeline on first builds, turbo = single light pass, power =
+     * pipeline on every turn.
      */
     const projectGraph = getGraphSnapshot();
     const body = {
       ...(projectGraph ? { projectGraph } : {}),
-      mode: turboMode ? ('turbo' as const) : ('power' as const),
+      mode: thinkingMode,
     };
 
     const newMessageContent =
@@ -482,7 +500,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       const projectGraph = getGraphSnapshot();
       const body = {
         ...(projectGraph ? { projectGraph } : {}),
-        mode: turboMode ? ('turbo' as const) : ('power' as const),
+        mode: thinkingMode,
       };
 
       append(
@@ -508,12 +526,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     }
   };
 
-  const toggleTurboMode = () => {
-    setTurboMode((previous) => {
-      const next = !previous;
+  const cycleThinkingMode = () => {
+    setThinkingMode((previous) => {
+      const next: ThinkingMode = previous === 'auto' ? 'turbo' : previous === 'turbo' ? 'power' : 'auto';
 
       try {
-        window.localStorage.setItem(TURBO_MODE_STORAGE_KEY, String(next));
+        window.localStorage.setItem(THINKING_MODE_STORAGE_KEY, next);
       } catch {
         // storage unavailable (private mode etc.) — keep the in-memory value
       }
@@ -523,15 +541,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   };
 
   const [messageRef, scrollRef] = useSnapScroll();
-
-  /**
-   * The server pauses over-long generations with a sentinel-tagged note
-   * (time budget, api.chat.ts). Offer a one-click Continue when the latest
-   * message is such a pause.
-   */
-  const lastMessage = messages[messages.length - 1];
-  const responsePaused =
-    !isLoading && lastMessage?.role === 'assistant' && lastMessage.content.includes(PAUSE_SENTINEL);
 
   return (
     <BaseChat
@@ -546,14 +555,12 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
       factChecking={factChecking}
       factCheck={runFactCheck}
       sendMessage={sendMessage}
-      showContinue={responsePaused}
-      onContinue={(event) => sendMessage(event, 'continue')}
       messageRef={messageRef}
       scrollRef={scrollRef}
       handleInputChange={handleInputChange}
       handleStop={abort}
-      turboMode={turboMode}
-      onToggleTurbo={toggleTurboMode}
+      thinkingMode={thinkingMode}
+      onCycleThinkingMode={cycleThinkingMode}
       messages={messages.map((message, i) => {
         if (message.role === 'user') {
           return message;

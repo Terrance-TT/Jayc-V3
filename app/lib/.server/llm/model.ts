@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { DEFAULT_GENERATION_MODE, GENERATION_MODES, type GenerationModeSettings } from './constants';
+import { LIGHT_EFFORT, type ReasoningEffort } from './constants';
 import { rewriteReasoningResponse } from './reasoning-stream';
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -22,7 +22,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
  * through untouched, and any parsing error falls back to the original.
  */
 const withKimiCompat =
-  (baseFetch: FetchLike, effort: GenerationModeSettings['reasoningEffort'], includeThinking: boolean): FetchLike =>
+  (baseFetch: FetchLike, effort: ReasoningEffort, includeThinking: boolean): FetchLike =>
   async (input, init) => {
     if (init?.body && typeof init.body === 'string') {
       try {
@@ -46,7 +46,7 @@ const withKimiCompat =
 export function getMoonshotModel(
   apiKey: string,
   env: Env,
-  effort: GenerationModeSettings['reasoningEffort'] = GENERATION_MODES[DEFAULT_GENERATION_MODE].reasoningEffort,
+  effort: ReasoningEffort = LIGHT_EFFORT,
   includeThinking = false,
 ) {
   const moonshot = createOpenAI({
