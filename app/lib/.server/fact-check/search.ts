@@ -9,6 +9,21 @@ const MAX_RESULTS = 5;
 const MAX_SNIPPET_LENGTH = 600;
 const MAX_TOTAL_LENGTH = 4000;
 
+const DEFAULT_MAX_QUERY_LENGTH = 300;
+
+/**
+ * Derives a search query from a chat message: strips diff/markup tags and
+ * collapses whitespace, capped to a safe length for search APIs. Shared by
+ * the first-message enrichment (api.chat.ts) and the pipeline verify phase.
+ */
+export function queryFromMessage(content: string, maxLength = DEFAULT_MAX_QUERY_LENGTH): string {
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
 interface TavilyResult {
   title?: string;
   content?: string;

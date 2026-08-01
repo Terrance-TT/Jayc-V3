@@ -48,6 +48,10 @@ export const EXPAND_MAX_TOKENS = 32_768;
 export const BUILD_EFFORT: ReasoningEffort = 'high';
 export const BUILD_MAX_TOKENS = 65_536;
 
+// verify phase (post-build domain-facts check, first-build pipelines only)
+export const VERIFY_EFFORT: ReasoningEffort = 'high';
+export const VERIFY_MAX_TOKENS = 16_384;
+
 /**
  * Wall-clock budget for the two THINKING phases of a pipeline run. Reaching
  * it never stops the session: the active pass is aborted and the build

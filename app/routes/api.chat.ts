@@ -5,7 +5,7 @@ import { runGeneration } from '~/lib/.server/llm/pipeline';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import { withHeartbeat } from '~/lib/.server/llm/heartbeat';
 import type { Messages } from '~/lib/.server/llm/stream-text';
-import { searchFacts } from '~/lib/.server/fact-check/search';
+import { searchFacts, queryFromMessage } from '~/lib/.server/fact-check/search';
 import { createScopedLogger } from '~/utils/logger';
 import { isClarifyingQuestions, type ThinkingMode } from '~/utils/thinking';
 import type { ByokConfig } from '~/lib/.server/llm/model';
@@ -15,7 +15,6 @@ const logger = createScopedLogger('ChatAction');
 const MAX_MESSAGES = 200;
 const MAX_MESSAGES_TOTAL_LENGTH = 800_000;
 const MAX_PROJECT_GRAPH_LENGTH = 20_000;
-const MAX_SEARCH_QUERY_LENGTH = 300;
 
 const VALID_MODES = new Set<ThinkingMode>(['auto', 'turbo', 'power']);
 
@@ -96,7 +95,16 @@ async function chatAction(args: ActionFunctionArgs) {
    * pass, continuations) while the response returns immediately. The
    * heartbeat wrapper keeps the connection warm through every silent gap.
    */
-  runGeneration({ messages, env, stream, generation, projectGraph, webSearch, byok }).catch((error) => {
+  runGeneration({
+    messages,
+    env,
+    stream,
+    generation,
+    projectGraph,
+    webSearch,
+    byok,
+    isFirstBuild: pipelineWorthy,
+  }).catch((error) => {
     logger.error('Generation pipeline crashed', error);
     stream.error(error);
   });
@@ -137,11 +145,7 @@ async function maybeSearchWeb(messages: Messages, env: Env): Promise<string | un
   }
 
   // strip any diff/markup tags from the request to form the search query
-  const query = messages[0].content
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, MAX_SEARCH_QUERY_LENGTH);
+  const query = queryFromMessage(messages[0].content);
 
   if (query.length === 0) {
     return undefined;

@@ -1,5 +1,6 @@
 import { createScopedLogger } from '~/utils/logger';
 import { isClarifyingQuestions } from '~/utils/thinking';
+import { queryFromMessage, searchFacts } from '~/lib/.server/fact-check/search';
 import {
   BUILD_EFFORT,
   BUILD_MAX_TOKENS,
@@ -10,6 +11,8 @@ import {
   PLAN_EFFORT,
   PLAN_MAX_TOKENS,
   THINKING_BUDGET_MS,
+  VERIFY_EFFORT,
+  VERIFY_MAX_TOKENS,
   type GenerationPlan,
   type ReasoningEffort,
 } from './constants';
@@ -20,6 +23,8 @@ import {
   EXPAND_BRIDGE_PROMPT,
   EXPAND_PHASE_SUFFIX,
   PLAN_PHASE_SUFFIX,
+  VERIFY_BRIDGE_PROMPT,
+  VERIFY_PHASE_SUFFIX,
 } from './prompts';
 import { streamText, type Messages, type StreamingOptions } from './stream-text';
 import type SwitchableStream from './switchable-stream';
@@ -35,6 +40,9 @@ interface RunGenerationParams {
   projectGraph?: string;
   webSearch?: string;
   byok?: ByokConfig;
+
+  /** true for first-build turns (build-like first message or answered clarifying questions) */
+  isFirstBuild?: boolean;
 }
 
 interface PassParams {
@@ -108,6 +116,8 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
       await params.stream.switchSource(markerStream(timedOut ? BUILD_TIMEOUT_MARKER : BUILD_MARKER));
 
       await streamWithContinuations(params, buildMessages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+
+      await maybeVerifyFacts(params, buildMessages);
     } else {
       await streamWithContinuations(params, params.messages, generation.effort, generation.maxTokens);
     }
@@ -140,6 +150,63 @@ function markerStream(text: string): ReadableStream<Uint8Array> {
       controller.close();
     },
   });
+}
+
+const VERIFY_MARKER = '\n\n---\n\n🔍 **Verifying domain facts…**\n\n';
+
+/**
+ * Post-build domain verification (first-build pipelines with a Tavily key
+ * only): a fresh targeted search, then a bounded pass that re-reads the
+ * domain-rules file against the facts and fixes any mismatches. Silent skip
+ * on missing key or any failure — never blocks or breaks the build.
+ */
+async function maybeVerifyFacts(params: RunGenerationParams, messages: Messages): Promise<void> {
+  const apiKey = params.env.TAVILY_API_KEY;
+
+  if (!apiKey || !params.isFirstBuild) {
+    return;
+  }
+
+  const firstUserMessage = params.messages.find((message) => message.role === 'user');
+
+  if (!firstUserMessage) {
+    return;
+  }
+
+  const query = queryFromMessage(firstUserMessage.content);
+
+  if (query.length === 0) {
+    return;
+  }
+
+  const facts = await searchFacts(query, apiKey);
+
+  if (!facts) {
+    logger.warn('Verify phase skipped: fact search returned nothing');
+
+    return;
+  }
+
+  await params.stream.switchSource(markerStream(VERIFY_MARKER));
+
+  const verifyMessages = [
+    ...messages,
+    {
+      role: 'user' as const,
+      content: [VERIFY_BRIDGE_PROMPT, '', '<reference_facts>', facts, '</reference_facts>'].join('\n'),
+    },
+  ];
+
+  try {
+    await runPass(params, {
+      messages: verifyMessages,
+      effort: VERIFY_EFFORT,
+      maxTokens: VERIFY_MAX_TOKENS,
+      systemSuffix: VERIFY_PHASE_SUFFIX,
+    });
+  } catch (error) {
+    logger.warn('Verify phase failed — build stands as-is', error);
+  }
 }
 
 /**
