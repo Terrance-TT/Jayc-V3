@@ -5,6 +5,7 @@ import { getAPIKey } from '~/lib/.server/llm/api-key';
 import { getMoonshotModel } from '~/lib/.server/llm/model';
 import { getSystemPrompt } from '~/lib/.server/llm/prompts';
 import { streamText } from '~/lib/.server/llm/stream-text';
+import { searchFacts } from '~/lib/.server/fact-check/search';
 import { WORK_DIR } from '~/utils/constants';
 
 /**
@@ -13,6 +14,7 @@ import { WORK_DIR } from '~/utils/constants';
  * Visit while signed in:
  *   /api/debug-llm                                — non-streaming Moonshot call with the failing sailing prompt
  *   /api/debug-llm?mode=stream                    — same call through the real streaming path
+ *   /api/debug-llm?mode=search                    — probe TAVILY_API_KEY end-to-end.
  *   /api/debug-llm?msg=...                        — custom prompt (max 2000 chars)
  *   /api/debug-llm?effort=high&maxTokens=131072   — reproduce Power mode exactly.
  *
@@ -23,6 +25,7 @@ import { WORK_DIR } from '~/utils/constants';
  * Interpretation:
  *   - sync fails  -> Moonshot rejects the request itself (error body included)
  *   - sync ok, stream fails -> the streaming relay / Cloudflare limits are at fault
+ *   - search fails -> the verdict says exactly which side is broken (missing key vs Tavily)
  */
 const DEFAULT_MESSAGE =
   'create a sailing app to educate a beginner on wind direction and how much their sail should be pulled in/pushed out';
@@ -60,7 +63,48 @@ export async function loader(args: LoaderFunctionArgs) {
     return json(await runStreamTest(message, env, effort, maxTokens));
   }
 
+  if (mode === 'search') {
+    return json(await runSearchTest(env));
+  }
+
   return json(await runSyncTest(message, env, effort, maxTokens));
+}
+
+/**
+ * Probes the web-search path end-to-end: is TAVILY_API_KEY reaching the
+ * server, and does Tavily accept it? Distinguishes "key missing" from
+ * "key present but rejected" so misconfiguration is a one-click diagnosis.
+ */
+async function runSearchTest(env: Env) {
+  const apiKey = env.TAVILY_API_KEY;
+
+  if (!apiKey) {
+    return {
+      ok: false,
+      mode: 'search',
+      verdict:
+        'TAVILY_API_KEY is NOT reaching the server. Add it in Cloudflare Pages → Settings → Environment variables (Production), then redeploy. Until then every search feature stays silently off.',
+    };
+  }
+
+  const facts = await searchFacts('sail trim wind direction no-go zone', apiKey);
+
+  if (!facts) {
+    return {
+      ok: false,
+      mode: 'search',
+      verdict:
+        'The key reaches the server but Tavily returned nothing — the key is wrong, expired, or the account has an issue. Check the Tavily dashboard.',
+    };
+  }
+
+  return {
+    ok: true,
+    mode: 'search',
+    verdict:
+      'Search works end-to-end: the key reaches the server and Tavily answered. Auto-enrichment and the verify phase are live on first builds.',
+    factsPreview: facts.slice(0, 300),
+  };
 }
 
 async function runSyncTest(message: string, env: Env, effort: Effort, maxTokens: number) {
