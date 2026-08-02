@@ -13,7 +13,7 @@ export const INTERACTIVE_ADDON = `
 
     2. The primary draggable control manipulates the DOMAIN variable being taught (e.g. the wind), NOT the viewer's frame (e.g. the boat) — unless steering the frame is the point of the app.
 
-    3. Draw the main subject ABOVE background shapes (z-order): hulls, arenas, and grids render first; the thing the user watches renders last.
+    3. Draw the main subject ABOVE background shapes (z-order): hulls, arenas, and grids render first; the thing the user watches renders last. Draw it with its defining parts (a sailboat: hull, mast, boom, one sail) — simplify details, never reduce the subject to a symbolic placeholder like a bare triangle.
 
     4. Keep every label fully inside the canvas with margin: no clipped, truncated, or overlapping text — measure or inset labels from edges.
 </interactive_conventions>

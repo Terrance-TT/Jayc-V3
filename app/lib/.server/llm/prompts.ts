@@ -657,10 +657,11 @@ export const REVIEW_PHASE_SUFFIX = `
   2. Z-order: the main subject must render ABOVE background shapes, never hidden behind them.
   3. Interaction: every control affects the object the user expects (the domain variable, not the viewer's frame); no dead buttons or controls wired to nothing.
   4. Rules: re-derive the app's rule table from the code and check it is internally consistent.
+  5. Fidelity: the main subject must look like the thing it represents — its defining parts, proportions, and orientation. Check against the real-world object (a sailboat has a hull, mast, boom, and a single sail — not a bare triangle), not just whether the code runs. Simplify details, never the defining structure.
 
   If anything is wrong: fix it with FULL updated file contents (all normal artifact rules apply). If everything is clean: reply with ONE short sentence confirming the review passed — change NOTHING.
 
-  Do NOT redesign, add features, or restyle. Bug fixes only.
+  Do NOT redesign, add features, or restyle. Bug and fidelity fixes only.
 </phase_instruction>`;
 
 // user-role bridge into the review pass
