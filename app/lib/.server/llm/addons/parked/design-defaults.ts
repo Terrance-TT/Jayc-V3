@@ -2,8 +2,9 @@
  * PARKED — not wired into any prompt (see ../CONTRACT.md).
  *
  * The house-style design defaults, removed from the always-on prompt during
- * the golden-scope revert to keep the default payload lean. Re-enable by
- * exporting through ../index.ts with a trigger if design consistency drifts.
+ * the golden-scope revert. A condensed version has since been promoted back
+ * into the always-on prompt (product_judgment in prompts.ts); this full
+ * text is kept as the reference copy.
  */
 export const DESIGN_DEFAULTS_ADDON = `
 <design_defaults>
