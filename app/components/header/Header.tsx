@@ -12,7 +12,7 @@ export function Header() {
   return (
     <header
       className={classNames(
-        'flex items-center px-4 h-[var(--header-height)] bg-bolt-elements-background-depth-1/70 backdrop-blur-md border-b',
+        'flex items-center bg-bolt-elements-background-depth-1 p-5 border-b h-[var(--header-height)]',
         {
           'border-transparent': !chat.started,
           'border-bolt-elements-borderColor': chat.started,
@@ -21,10 +21,8 @@ export function Header() {
     >
       <div className="flex items-center gap-2 z-logo text-bolt-elements-textPrimary cursor-pointer">
         <div className="i-ph:sidebar-simple-duotone text-xl" />
-        <a href="/" className="text-xl font-semibold flex items-center">
-          <span className="text-xl font-semibold leading-none tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-accent-300 via-accent-400 to-accent-600">
-            Jayc
-          </span>
+        <a href="/" className="text-2xl font-semibold text-accent flex items-center">
+          <span className="text-2xl font-semibold leading-none tracking-tight">Jayc</span>
         </a>
       </div>
       <span className="flex-1 px-4 truncate text-center text-bolt-elements-textPrimary">

@@ -13,15 +13,6 @@ body {
   width: 100%;
 }
 
-/* Studio canvas: deep base with a faint accent glow in two corners */
-body {
-  background:
-    radial-gradient(60rem 40rem at 85% -10%, theme('colors.alpha.accent.10'), transparent 60%),
-    radial-gradient(50rem 36rem at -10% 110%, theme('colors.alpha.accent.5'), transparent 60%),
-    var(--bolt-elements-bg-depth-1);
-  background-attachment: fixed;
-}
-
 /* Thin, theme-aware scrollbars everywhere */
 * {
   scrollbar-width: thin;

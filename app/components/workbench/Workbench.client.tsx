@@ -110,16 +110,16 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
       >
         <div
           className={classNames(
-            'fixed top-[calc(var(--header-height)+0.75rem)] bottom-3 w-[calc(100%-1.5rem)] z-0 transition-[left] duration-200 bolt-ease-cubic-bezier',
+            'fixed top-[calc(var(--header-height)+1.5rem)] bottom-6 w-[var(--workbench-inner-width)] mr-4 z-0 transition-[left,width] duration-200 bolt-ease-cubic-bezier',
             {
-              'left-3': showWorkbench,
+              'left-[var(--workbench-left)]': showWorkbench,
               'left-[100%]': !showWorkbench,
             },
           )}
         >
-          <div className="absolute inset-0">
-            <div className="h-full flex flex-col bg-bolt-elements-background-depth-2/85 backdrop-blur-md border border-bolt-elements-borderColor shadow-[0_24px_64px_rgba(0,0,0,0.35)] rounded-2xl overflow-hidden">
-              <div className="flex items-center px-3 py-2">
+          <div className="absolute inset-0 px-6">
+            <div className="h-full flex flex-col bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor shadow-sm rounded-lg overflow-hidden">
+              <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
                 <Slider selected={selectedView} options={sliderOptions} setSelected={setSelectedView} />
                 <div className="ml-auto" />
                 <GitHubExportButton />
