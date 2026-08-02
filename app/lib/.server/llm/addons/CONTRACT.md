@@ -9,6 +9,7 @@ request actually involves their concern, keeping the default prompt lean.
 
 - `secrets.ts`: the API-key/secrets rules (golden-era section).
 - `deployment.ts`: the Railway deployment rules (trimmed).
+- `interactive.ts`: interactive-visual conventions (canvas/SVG apps).
 - `index.ts`: `getTriggeredAddons` — pattern-matches the request and returns
   only the relevant sections.
 - `parked/`: prompt sections removed from the always-on prompt and kept

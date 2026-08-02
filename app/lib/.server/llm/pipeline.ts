@@ -11,6 +11,8 @@ import {
   MAX_THINK_EXTENSIONS,
   PLAN_EFFORT,
   PLAN_MAX_TOKENS,
+  REVIEW_EFFORT,
+  REVIEW_MAX_TOKENS,
   THINKING_BUDGET_MS,
   VERIFY_EFFORT,
   VERIFY_MAX_TOKENS,
@@ -26,6 +28,8 @@ import {
   EXPAND_BRIDGE_PROMPT,
   EXPAND_PHASE_SUFFIX,
   PLAN_PHASE_SUFFIX,
+  REVIEW_BRIDGE_PROMPT,
+  REVIEW_PHASE_SUFFIX,
   VERIFY_BRIDGE_PROMPT,
   VERIFY_PHASE_SUFFIX,
 } from './prompts';
@@ -46,6 +50,9 @@ interface RunGenerationParams {
 
   /** true for first-build turns (build-like first message or answered clarifying questions) */
   isFirstBuild?: boolean;
+
+  /** skips the post-build review pass (turbo mode — speed over ceremony) */
+  skipReview?: boolean;
 
   /** set when the user's message is a thinking-choice control reply */
   control?: 'think_longer' | 'build_now';
@@ -129,9 +136,11 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
 
       await streamWithContinuations(params, outcome.messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
 
-      await maybeVerifyFacts(params, outcome.messages);
+      await runPostBuildPhases(params, outcome.messages);
     } else {
       await streamWithContinuations(params, params.messages, generation.effort, generation.maxTokens);
+
+      await runPostBuildPhases(params, params.messages);
     }
 
     stream.close();
@@ -310,6 +319,36 @@ function markerStream(text: string): ReadableStream<Uint8Array> {
 }
 
 const VERIFY_MARKER = '\n\n---\n\n🔍 **Verifying domain facts…**\n\n';
+const REVIEW_MARKER = '\n\n---\n\n🔎 **Reviewing the build…**\n\n';
+
+/**
+ * Unified post-build phases, run after any first build completes (pipeline
+ * or single-pass): first the second-opinion REVIEW (no key needed — hunts
+ * the visual/logic bug class: z-order, sign conventions, clipping,
+ * interaction targets, dead controls), then the facts VERIFY phase (needs
+ * TAVILY_API_KEY — grounds domain rules in fresh search results). Each
+ * phase skips silently when its gate is unmet and failures never block.
+ */
+async function runPostBuildPhases(params: RunGenerationParams, messages: Messages): Promise<void> {
+  if (params.isFirstBuild && !params.skipReview) {
+    await params.stream.switchSource(markerStream(REVIEW_MARKER));
+
+    const reviewMessages = [...messages, { role: 'user' as const, content: REVIEW_BRIDGE_PROMPT }];
+
+    try {
+      await runPass(params, {
+        messages: reviewMessages,
+        effort: REVIEW_EFFORT,
+        maxTokens: REVIEW_MAX_TOKENS,
+        systemSuffix: REVIEW_PHASE_SUFFIX,
+      });
+    } catch (error) {
+      logger.warn('Review phase failed — build stands as-is', error);
+    }
+  }
+
+  await maybeVerifyFacts(params, messages);
+}
 
 /**
  * Post-build domain verification (first-build pipelines with a Tavily key
