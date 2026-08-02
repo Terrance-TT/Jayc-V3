@@ -8,8 +8,9 @@
       transition-property: transform, opacity;
       transition-duration: 0.3s;
       will-change: transform, opacity;
-      transform: translateX(-50%);
+      transform: translateX(calc(-100% - 1.5rem));
       opacity: 0;
+      pointer-events: none;
     }
   }
 }
