@@ -16,5 +16,7 @@ export const INTERACTIVE_ADDON = `
     3. Draw the main subject ABOVE background shapes (z-order): hulls, arenas, and grids render first; the thing the user watches renders last. Draw it with its defining parts (a sailboat: hull, mast, boom, one sail) — simplify details, never reduce the subject to a symbolic placeholder like a bare triangle.
 
     4. Keep every label fully inside the canvas with margin: no clipped, truncated, or overlapping text — measure or inset labels from edges.
+
+    5. Physics: for every cause→effect pair in the scene, the effect must land on the physically correct side of its cause — walk the causal chain and check the SIGN (wind pushes the sail to the side AWAY from where it comes from; gravity pulls down; shadows fall away from the light). Before finishing, sanity-check the whole configuration: could this arrangement exist in reality?
 </interactive_conventions>
 `;

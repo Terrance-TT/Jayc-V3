@@ -44,13 +44,20 @@ describe('getTriggeredAddons', () => {
     );
   });
 
+  it('injects the interactive addon for educational visual apps that name their subject, not the tech', () => {
+    expect(getTriggeredAddons({ userMessage: 'create a sailing app to teach wind direction' })).toContain(
+      '<interactive_conventions>',
+    );
+    expect(getTriggeredAddons({ userMessage: 'build an app that teaches me how to trim a sail' })).toContain(
+      '<interactive_conventions>',
+    );
+  });
+
   it('does not inject the interactive addon for non-visual requests', () => {
     expect(getTriggeredAddons({ userMessage: 'Build a todo app in React using Tailwind' })).toBe('');
     expect(getTriggeredAddons({ userMessage: 'add stripe checkout please' })).not.toContain(
       '<interactive_conventions>',
     );
-
-    // keyword-less visual apps are covered by the always-on review pass instead
-    expect(getTriggeredAddons({ userMessage: 'create a sailing app to teach wind direction' })).toBe('');
+    expect(getTriggeredAddons({ userMessage: 'create a form validation library' })).toBe('');
   });
 });

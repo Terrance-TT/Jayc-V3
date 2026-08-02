@@ -658,6 +658,7 @@ export const REVIEW_PHASE_SUFFIX = `
   3. Interaction: every control affects the object the user expects (the domain variable, not the viewer's frame); no dead buttons or controls wired to nothing.
   4. Rules: re-derive the app's rule table from the code and check it is internally consistent.
   5. Fidelity: the main subject must look like the thing it represents — its defining parts, proportions, and orientation. Check against the real-world object (a sailboat has a hull, mast, boom, and a single sail — not a bare triangle), not just whether the code runs. Simplify details, never the defining structure.
+  6. Physics: list the scene's cause→effect pairs and verify each effect is on the physically possible side of its cause (sail leeward of the wind, pendulum hanging down, shadows opposite the light) — an impossible configuration is a bug, not a style choice. Displayed readouts must also agree with the drawn state (a "downwind, fully eased" readout may not pair with a drawn-in sail).
 
   If anything is wrong: fix it with FULL updated file contents (all normal artifact rules apply). If everything is clean: reply with ONE short sentence confirming the review passed — change NOTHING.
 

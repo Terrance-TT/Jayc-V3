@@ -18,9 +18,13 @@ const SECRETS_PATTERN =
 const DEPLOYMENT_PATTERN =
   /\b(deploys?|deployment|deploying|railway|vercel|netlify|hosting|docker|production|fly\.io|render\.com)\b/i;
 
-// interactive-visual concerns (canvas/SVG games, simulators, diagrams, trainers)
+/**
+ * Interactive-visual concerns: canvas/SVG tech words, games/simulators, and
+ * the teaching phrasings of educational visual apps (they name their
+ * subject, not the tech) — biased to over-trigger: harmless when irrelevant.
+ */
 const INTERACTIVE_PATTERN =
-  /\b(canvas|svg|games?|gaming|simulat\w*|animat\w*|diagrams?|visuali\w*|drag(ging)?|physics|charts?|maps?|trainer|arcade|paddle|ball)\b/i;
+  /\b(canvas|svg|games?|gaming|simulat\w*|animat\w*|diagrams?|visuali\w*|drag(ging)?|physics|charts?|maps?|trainer|arcade|paddle|ball|teach|teaches|learn|educat\w*|explan\w*|pendulum|orbit|rocket|sail\w*|boat)\b/i;
 
 /**
  * Returns the prompt addon sections relevant to this request, or an empty
