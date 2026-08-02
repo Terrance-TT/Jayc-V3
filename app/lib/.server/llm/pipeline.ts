@@ -172,6 +172,7 @@ async function runThinkLonger(params: RunGenerationParams): Promise<void> {
     messages.push({ role: 'user', content: BUILD_TIMEOUT_PROMPT });
 
     await streamWithContinuations(params, messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+    await runPostBuildPhases(params, messages);
 
     return;
   }
@@ -188,6 +189,7 @@ async function runThinkLonger(params: RunGenerationParams): Promise<void> {
   await params.stream.switchSource(markerStream(outcome.timedOut ? THINKING_CAP_MARKER : BUILD_MARKER));
 
   await streamWithContinuations(params, outcome.messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+  await runPostBuildPhases(params, outcome.messages);
 }
 
 /**
@@ -208,6 +210,7 @@ async function runBuildNow(params: RunGenerationParams): Promise<void> {
   await params.stream.switchSource(markerStream(BUILD_TIMEOUT_MARKER));
 
   await streamWithContinuations(params, messages, BUILD_EFFORT, BUILD_MAX_TOKENS);
+  await runPostBuildPhases(params, messages);
 }
 
 /**
@@ -322,8 +325,8 @@ const VERIFY_MARKER = '\n\n---\n\n🔍 **Verifying domain facts…**\n\n';
 const REVIEW_MARKER = '\n\n---\n\n🔎 **Reviewing the build…**\n\n';
 
 /**
- * Unified post-build phases, run after any first build completes (pipeline
- * or single-pass): first the second-opinion REVIEW (no key needed — hunts
+ * Unified post-build phases, run after any first build completes (pipeline,
+ * single-pass, or thinking-clock build): first the second-opinion REVIEW (no key needed — hunts
  * the visual/logic bug class: z-order, sign conventions, clipping,
  * interaction targets, dead controls), then the facts VERIFY phase (needs
  * TAVILY_API_KEY — grounds domain rules in fresh search results). Each
@@ -516,8 +519,11 @@ async function runThinkingPhases(params: RunGenerationParams): Promise<ThinkingO
 
 /**
  * Streams one pass and, when the model hits its token budget, continues it
- * seamlessly (up to MAX_RESPONSE_SEGMENTS). A literally empty answer is
- * retried once at light effort so the user never gets silence.
+ * seamlessly (up to MAX_RESPONSE_SEGMENTS). Every segment — including the
+ * final one — is appended to `messages`, so post-build phases (review,
+ * verify) receive the COMPLETE build in context, not just the cut-off
+ * segments. A literally empty answer is retried once at light effort so the
+ * user never gets silence.
  */
 async function streamWithContinuations(
   params: RunGenerationParams,
@@ -546,6 +552,8 @@ async function streamWithContinuations(
     }
 
     if (finishReason !== 'length') {
+      messages.push({ role: 'assistant', content: text });
+
       return;
     }
 
