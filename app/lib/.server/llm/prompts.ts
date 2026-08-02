@@ -635,33 +635,6 @@ export const VERIFY_PHASE_SUFFIX = `
 export const VERIFY_BRIDGE_PROMPT = 'Verify the project’s domain rules against these freshly fetched reference facts:';
 
 /**
- * Review phase (post-build second-opinion pass): the model re-reads the
- * freshly built app with a critical visual/logic checklist — the bug class
- * no search can catch (z-order, sign conventions, clipping, interaction
- * targets, dead controls).
- */
-export const REVIEW_PHASE_SUFFIX = `
-
-<phase_instruction>
-  THIS IS THE REVIEW PHASE. The project was just built. You are reviewing another engineer's work with fresh eyes — you cannot run the app, so hunt for bugs by READING the rendering and interaction code.
-
-  Check systematically:
-
-  1. Geometry: elements drawn off-canvas or clipped; overlapping or truncated labels; drawings on the wrong side — re-check the SIGN of every rotation, translation, and angle convention.
-  2. Z-order: the main subject must render ABOVE background shapes, never hidden behind them.
-  3. Interaction: every control affects the object the user expects (the domain variable, not the viewer's frame); no dead buttons or controls wired to nothing.
-  4. Rules: re-derive the app's rule table from the code and check it is internally consistent.
-
-  If anything is wrong: fix it with FULL updated file contents (all normal artifact rules apply). If everything is clean: reply with ONE short sentence confirming the review passed — change NOTHING.
-
-  Do NOT redesign, add features, or restyle. Bug fixes only.
-</phase_instruction>`;
-
-// user-role bridge into the review pass
-export const REVIEW_BRIDGE_PROMPT =
-  'Review the app you just built, per the phase instruction in your system prompt. Read the rendering and interaction code critically and fix any bugs you find.';
-
-/**
  * Continued-thinking phase (pipeline think-longer flow): the user chose to
  * extend the design window after the thinking clock fired.
  */

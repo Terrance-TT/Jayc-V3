@@ -123,7 +123,6 @@ async function chatAction(args: ActionFunctionArgs) {
     control: control ?? undefined,
     extensionsUsed,
     isFirstBuild: pipelineWorthy,
-    skipReview: mode === 'turbo',
   }).catch((error) => {
     logger.error('Generation pipeline crashed', error);
     stream.error(error);
