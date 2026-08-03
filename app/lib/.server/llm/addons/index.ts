@@ -1,6 +1,7 @@
 import { DEPLOYMENT_ADDON } from './deployment';
 import { INTERACTIVE_ADDON } from './interactive';
 import { SECRETS_ADDON } from './secrets';
+import { THREE_D_ADDON } from './threed';
 
 interface AddonTriggerContext {
   /** the latest user message text */
@@ -26,6 +27,9 @@ const DEPLOYMENT_PATTERN =
 const INTERACTIVE_PATTERN =
   /\b(canvas|svg|games?|gaming|simulat\w*|animat\w*|diagrams?|visuali\w*|drag(ging)?|physics|charts?|maps?|trainer|arcade|paddle|ball|teach|teaches|learn|educat\w*|explan\w*|pendulum|orbit|rocket|sail\w*|boat)\b/i;
 
+// 3D scene concerns (three.js / react-three-fiber / WebGL) — stacks with the interactive addon
+const THREE_D_PATTERN = /\b(3d|3-d|three\.?js|webgl|react-three-fiber|r3f|voxel|webxr)\b/i;
+
 /**
  * Returns the prompt addon sections relevant to this request, or an empty
  * string when nothing triggers (the default — keeping the prompt lean).
@@ -44,6 +48,10 @@ export function getTriggeredAddons({ userMessage, projectGraph }: AddonTriggerCo
 
   if (INTERACTIVE_PATTERN.test(userMessage)) {
     addons.push(INTERACTIVE_ADDON);
+  }
+
+  if (THREE_D_PATTERN.test(userMessage)) {
+    addons.push(THREE_D_ADDON);
   }
 
   return addons.length > 0 ? `${addons.join('\n')}\n` : '';

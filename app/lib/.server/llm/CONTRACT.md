@@ -10,7 +10,7 @@ handling.
 
 - `api-key.ts`, `model.ts`: Moonshot/OpenRouter model construction (BYOK-aware).
 - `prompts.ts`: the golden-scope system prompt + pipeline phase prompts.
-- `addons/`: conditional prompt sections (secrets, deployment) + parked content.
+- `addons/`: conditional prompt sections (secrets, deployment, interactive, threed) + parked content.
 - `stream-text.ts`: the shared AI SDK wrapper (prompt assembly, message hygiene).
 - `pipeline.ts`: generation orchestrator (thinking phases, build, verify, choices).
 - `switchable-stream.ts`, `heartbeat.ts`, `reasoning-stream.ts`: stream plumbing.

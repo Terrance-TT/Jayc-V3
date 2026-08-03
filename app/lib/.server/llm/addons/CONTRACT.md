@@ -10,6 +10,7 @@ request actually involves their concern, keeping the default prompt lean.
 - `secrets.ts`: the API-key/secrets rules (golden-era section).
 - `deployment.ts`: the Railway deployment rules (trimmed).
 - `interactive.ts`: interactive-visual conventions (canvas/SVG apps).
+- `threed.ts`: 3D scene conventions (three.js / react-three-fiber).
 - `index.ts`: `getTriggeredAddons` — pattern-matches the request and returns
   only the relevant sections.
 - `parked/`: prompt sections removed from the always-on prompt and kept
@@ -22,7 +23,9 @@ request actually involves their concern, keeping the default prompt lean.
 
 ## Inputs (what this module needs from others)
 
-- `stream-text.ts`: passes the latest user message + graphify snapshot.
+- `stream-text.ts`: passes the first + latest user message (pipeline passes
+  end in bridge prompts, so the original request must also trigger) and the
+  graphify snapshot.
 
 ## Boundaries
 

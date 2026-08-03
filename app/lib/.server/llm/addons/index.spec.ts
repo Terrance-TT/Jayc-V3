@@ -53,6 +53,21 @@ describe('getTriggeredAddons', () => {
     );
   });
 
+  it('injects the threed addon for 3D requests', () => {
+    expect(getTriggeredAddons({ userMessage: 'build a 3d solar system' })).toContain('<threed_conventions>');
+    expect(getTriggeredAddons({ userMessage: 'make a three.js voxel viewer' })).toContain('<threed_conventions>');
+    expect(getTriggeredAddons({ userMessage: 'Build a todo app in React using Tailwind' })).not.toContain(
+      '<threed_conventions>',
+    );
+  });
+
+  it('stacks interactive and threed addons for 3D interactive requests', () => {
+    const addons = getTriggeredAddons({ userMessage: 'build a 3d solar system with a canvas' });
+
+    expect(addons).toContain('<interactive_conventions>');
+    expect(addons).toContain('<threed_conventions>');
+  });
+
   it('does not inject the interactive addon for non-visual requests', () => {
     expect(getTriggeredAddons({ userMessage: 'Build a todo app in React using Tailwind' })).toBe('');
     expect(getTriggeredAddons({ userMessage: 'add stripe checkout please' })).not.toContain(
