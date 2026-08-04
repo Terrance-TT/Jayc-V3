@@ -2,7 +2,9 @@
  * PARKED — not wired into any prompt (see ../CONTRACT.md).
  *
  * The feature-suggestions section, removed from the always-on prompt during
- * the golden-scope revert to keep the default payload lean.
+ * the golden-scope revert to keep the default payload lean. The Clerk
+ * inline-auth guidance at the bottom has since been promoted into the live
+ * secrets addon (../secrets.ts, rule 10); the rest stays dormant.
  */
 export const FEATURE_SUGGESTIONS_ADDON = `
 <feature_suggestions>

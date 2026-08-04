@@ -38,5 +38,7 @@ export const SECRETS_ADDON = `
     8. If the user pastes a real key into the chat, you MAY write it into \`.env\` for them (that file is git-ignored), but NEVER into any other file, and never repeat the value back in your reply.
 
     9. NEVER print the contents of \`.env\` or echo a secret value back in chat.
+
+    10. Authentication: default to Clerk. Use inline/modal sign-in components ONLY (e.g. a mounted \`<SignIn />\` or modal sign-in) — hosted-portal redirects break inside the preview iframe and the app will look broken. The publishable key follows rule 3 (\`VITE_CLERK_PUBLISHABLE_KEY\`); the secret key stays server-side (rule 4). The same inline-only rule applies to any auth provider's hosted redirect flow inside the preview.
 </secrets_handling>
 `;
