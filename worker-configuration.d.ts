@@ -1,3 +1,5 @@
+// Hand-maintained: wrangler.toml declares no [vars], so `wrangler types` would
+// wipe this file. Keep it in sync with the bindings the code actually uses.
 interface Env {
   MOONSHOT_API_KEY: string;
   MOONSHOT_MODEL?: string;
