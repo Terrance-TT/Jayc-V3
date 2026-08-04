@@ -3,17 +3,6 @@ import { memo, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { exportProjectToGitHub, getSavedToken, sanitizeRepoName, saveToken } from '~/lib/github/export';
-import {
-  createProject,
-  createServiceDomain,
-  createServiceFromRepo,
-  getProductionEnvironmentId,
-  getSavedRailwayToken,
-  saveRailwayToken,
-  triggerDeploy,
-  upsertVariable,
-  validateRailwayToken,
-} from '~/lib/railway/client';
 import { workbenchStore } from '~/lib/stores/workbench';
 
 interface RailwayWizardDialogProps {
@@ -27,21 +16,14 @@ interface FileDirentLike {
   isBinary?: boolean;
 }
 
-type StepStatus = 'pending' | 'active' | 'done' | 'error';
-
-interface DeployStep {
-  label: string;
-  status: StepStatus;
-  detail?: string;
-}
-
 /**
  * Guided publish wizard: Step 1 pushes the project to GitHub (existing
- * export machinery), Step 2 deploys it to Railway via their GraphQL API
- * (project → service from repo → env vars → deploy → public domain), with a
- * live checklist so a vibe coder sees exactly where they are. Tokens live
- * in localStorage only. Steps that need a server (env vars, volume) adapt
- * to whether the project actually has one.
+ * export machinery), Step 2 teaches the Railway part with exact click-path
+ * instructions (New Project from repo → Variables tab → Settings →
+ * Networking → Generate Domain). The Railway API automation proved
+ * unreliable against their live schema and was removed (see git history) —
+ * guided steps are the dependable path. Server-only guidance (env vars,
+ * Volume note) adapts to whether the project actually has a server.
  */
 export const RailwayWizardDialog = memo(({ open, onOpenChange }: RailwayWizardDialogProps) => {
   const files = useStore(workbenchStore.files);
@@ -54,13 +36,6 @@ export const RailwayWizardDialog = memo(({ open, onOpenChange }: RailwayWizardDi
   const [isPrivate, setIsPrivate] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [repoFullName, setRepoFullName] = useState<string | undefined>(undefined);
-
-  // step 2 — Railway
-  const [railwayToken, setRailwayToken] = useState('');
-  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
-  const [deploying, setDeploying] = useState(false);
-  const [deploySteps, setDeploySteps] = useState<DeployStep[]>([]);
-  const [deployedUrl, setDeployedUrl] = useState<string | undefined>(undefined);
 
   const hasServer = useMemo(
     () =>
@@ -97,9 +72,6 @@ export const RailwayWizardDialog = memo(({ open, onOpenChange }: RailwayWizardDi
     if (nextOpen) {
       setStep(repoFullName ? 2 : 1);
       setGithubToken(getSavedToken());
-      setRailwayToken(getSavedRailwayToken());
-      setDeploySteps([]);
-      setDeployedUrl(undefined);
     }
 
     onOpenChange(nextOpen);
@@ -131,99 +103,6 @@ export const RailwayWizardDialog = memo(({ open, onOpenChange }: RailwayWizardDi
       toast.error(error instanceof Error ? error.message : 'GitHub export failed');
     } finally {
       setExporting(false);
-    }
-  };
-
-  const setStepState = (index: number, status: StepStatus, detail?: string) => {
-    setDeploySteps((steps) => steps.map((stepItem, i) => (i === index ? { ...stepItem, status, detail } : stepItem)));
-  };
-
-  const handleDeploy = async () => {
-    const token = railwayToken.trim();
-
-    if (!token) {
-      toast.error('Paste your Railway token first');
-      return;
-    }
-
-    if (!repoFullName) {
-      toast.error('Publish to GitHub first (step 1)');
-      return;
-    }
-
-    const steps: DeployStep[] = [
-      { label: 'Validating token', status: 'pending' },
-      { label: 'Creating project', status: 'pending' },
-      { label: `Connecting ${repoFullName}`, status: 'pending' },
-      ...(envKeys.length > 0 ? [{ label: 'Setting environment variables', status: 'pending' as StepStatus }] : []),
-      { label: 'Deploying', status: 'pending' },
-      { label: 'Getting your public URL', status: 'pending' },
-    ];
-
-    setDeploySteps(steps);
-    setDeploying(true);
-    setDeployedUrl(undefined);
-    saveRailwayToken(token);
-
-    try {
-      setStepState(0, 'active');
-
-      const accountName = await validateRailwayToken(token);
-
-      setStepState(0, 'done', accountName);
-      setStepState(1, 'active');
-
-      const projectId = await createProject(token, sanitizeRepoName(repoName));
-
-      setStepState(1, 'done');
-      setStepState(2, 'active');
-
-      const environmentId = await getProductionEnvironmentId(token, projectId);
-      const serviceId = await createServiceFromRepo(token, projectId, repoFullName, 'web');
-
-      setStepState(2, 'done');
-
-      let nextIndex = 3;
-
-      if (envKeys.length > 0) {
-        setStepState(nextIndex, 'active');
-
-        for (const key of envKeys) {
-          const value = variableValues[key]?.trim();
-
-          if (value) {
-            await upsertVariable(token, { projectId, environmentId, serviceId }, key, value);
-          }
-        }
-
-        setStepState(nextIndex, 'done');
-        nextIndex += 1;
-      }
-
-      setStepState(nextIndex, 'active');
-      await triggerDeploy(token, serviceId, environmentId);
-      setStepState(nextIndex, 'done');
-      setStepState(nextIndex + 1, 'active');
-
-      const domain = await createServiceDomain(token, serviceId, environmentId);
-      const url = `https://${domain}`;
-
-      setStepState(nextIndex + 1, 'done', url);
-      setDeployedUrl(url);
-      toast.success('Deployed to Railway');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Deploy failed';
-
-      setDeploySteps((current) => {
-        const activeIndex = current.findIndex((stepItem) => stepItem.status === 'active');
-
-        return current.map((stepItem, i) =>
-          i === activeIndex ? { ...stepItem, status: 'error', detail: message } : stepItem,
-        );
-      });
-      toast.error(message);
-    } finally {
-      setDeploying(false);
     }
   };
 
@@ -299,87 +178,47 @@ export const RailwayWizardDialog = memo(({ open, onOpenChange }: RailwayWizardDi
               <>
                 <div className="text-sm text-bolt-elements-textSecondary">
                   {repoFullName
-                    ? `Deploying ${repoFullName}. Paste a Railway token — saved in your browser only. Create one at `
-                    : 'No GitHub repo yet in this session — go back to step 1, or deploy a repo you exported earlier.'}
-                  <a
-                    className="text-bolt-elements-item-contentAccent underline"
-                    href="https://railway.app/account/tokens"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    railway.app/account/tokens
-                  </a>
-                  .
+                    ? `Your repo ${repoFullName} is ready. Finish the deploy on Railway:`
+                    : 'Finish the deploy on Railway:'}
                 </div>
-                <input
-                  type="password"
-                  value={railwayToken}
-                  onChange={(event) => setRailwayToken(event.target.value)}
-                  placeholder="Railway API token"
-                  className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-bolt-elements-textPrimary focus:outline-none"
-                />
 
-                {hasServer && envKeys.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <div className="text-sm font-medium text-bolt-elements-textSecondary">
-                      Environment variables (from your .env.example — leave blank to fill in later on Railway)
-                    </div>
-                    {envKeys.map((key) => (
-                      <label key={key} className="flex items-center gap-2 text-sm">
-                        <span className="w-48 truncate font-mono text-xs text-bolt-elements-textTertiary">{key}</span>
-                        <input
-                          type={/key|secret|token|password/i.test(key) ? 'password' : 'text'}
-                          value={variableValues[key] ?? ''}
-                          onChange={(event) =>
-                            setVariableValues((values) => ({ ...values, [key]: event.target.value }))
-                          }
-                          className="flex-1 rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-bolt-elements-textPrimary focus:outline-none"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                )}
+                <a
+                  className="inline-flex items-center gap-2 self-start rounded-md bg-bolt-elements-item-backgroundAccent px-3 py-2 text-sm font-medium text-bolt-elements-item-contentAccent"
+                  href="https://railway.com/new"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <div className="i-ph:arrow-square-out" />
+                  Open Railway — New Project
+                </a>
+
+                <ol className="list-decimal pl-5 text-sm text-bolt-elements-textSecondary">
+                  <li>
+                    Choose <b>Deploy from GitHub repo</b>
+                    {repoFullName ? ` and pick ${repoFullName}` : ' and pick the repo you just published'} (connect
+                    GitHub if Railway asks).
+                  </li>
+                  {envKeys.length > 0 && (
+                    <li>
+                      Open the new service → <b>Variables</b> tab → paste your keys:
+                      <div className="mt-1 flex flex-col gap-0.5 rounded-md bg-bolt-elements-background-depth-1 px-3 py-2 font-mono text-xs text-bolt-elements-textTertiary">
+                        {envKeys.map((key) => (
+                          <span key={key}>{key}=…</span>
+                        ))}
+                      </div>
+                    </li>
+                  )}
+                  <li>
+                    Go to <b>Settings → Networking</b> → <b>Generate Domain</b>. If it asks for a port, leave it — your
+                    server already reads the port Railway assigns.
+                  </li>
+                  <li>Wait a minute or two for the build — your app goes live at the generated domain.</li>
+                </ol>
 
                 {hasServer && (
                   <div className="text-xs text-bolt-elements-textTertiary">
-                    If your app stores data (SQLite), attach a Volume at the data directory in the Railway dashboard
-                    after the first deploy.
-                  </div>
-                )}
-
-                {deploySteps.length > 0 && (
-                  <div className="flex flex-col gap-1.5 rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2">
-                    {deploySteps.map((deployStep, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm">
-                        {deployStep.status === 'done' && <div className="i-ph:check-circle-fill text-green-500" />}
-                        {deployStep.status === 'active' && (
-                          <div className="i-svg-spinners:90-ring-with-bg text-bolt-elements-loader-progress" />
-                        )}
-                        {deployStep.status === 'pending' && (
-                          <div className="i-ph:circle text-bolt-elements-textTertiary" />
-                        )}
-                        {deployStep.status === 'error' && <div className="i-ph:x-circle-fill text-red-500" />}
-                        <span className="text-bolt-elements-textPrimary">{deployStep.label}</span>
-                        {deployStep.detail && (
-                          <span className="truncate text-xs text-bolt-elements-textTertiary">{deployStep.detail}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {deployedUrl && (
-                  <div className="rounded-md border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm">
-                    Your app is live:{' '}
-                    <a
-                      className="text-bolt-elements-item-contentAccent underline"
-                      href={deployedUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {deployedUrl}
-                    </a>{' '}
-                    (first build takes a minute or two)
+                    If your app stores data (SQLite), attach a Volume at the data directory: service → Settings →
+                    Volumes.
                   </div>
                 )}
 
@@ -387,8 +226,8 @@ export const RailwayWizardDialog = memo(({ open, onOpenChange }: RailwayWizardDi
                   <DialogButton type="secondary" onClick={() => setStep(1)}>
                     ← GitHub
                   </DialogButton>
-                  <DialogButton type="primary" onClick={handleDeploy}>
-                    {deploying ? 'Deploying…' : 'Deploy to Railway'}
+                  <DialogButton type="secondary" onClick={() => onOpenChange(false)}>
+                    Done
                   </DialogButton>
                 </div>
               </>
