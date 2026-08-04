@@ -43,14 +43,6 @@ interface BaseChatProps {
   onThinkingChoice?: (choice: ControlChoice) => void;
 }
 
-const EXAMPLE_PROMPTS = [
-  { text: 'Build a todo app in React using Tailwind' },
-  { text: 'Build a simple blog using Astro' },
-  { text: 'Create a cookie consent form using Material UI' },
-  { text: 'Make a space invaders game' },
-  { text: 'How do I center a div?' },
-];
-
 const TEXTAREA_MIN_HEIGHT = 76;
 
 const MODE_DISPLAY = {
@@ -69,12 +61,6 @@ const MODE_DISPLAY = {
     label: 'Power',
     title: 'Power: plan → expand → build on every request — deepest, slowest. Click for Auto.',
   },
-} as const;
-
-const MODE_HINT = {
-  auto: 'Auto: quick plan, deep design, then build on new projects — fast follow-ups.',
-  turbo: 'Turbo: fastest answers with light thinking.',
-  power: 'Power: plan → expand → build on every request — slowest, deepest.',
 } as const;
 
 export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
@@ -123,12 +109,12 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         <div ref={scrollRef} className="flex overflow-y-auto w-full h-full">
           <div className={classNames(styles.Chat, 'flex flex-col flex-grow min-w-[var(--chat-min-width)] h-full')}>
             {!chatStarted && (
-              <div id="intro" className="mt-[26vh] max-w-chat mx-auto">
-                <h1 className="text-5xl text-center font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-accent-400 via-accent-500 to-accent-700 pb-1 mb-2">
-                  Where ideas begin
+              <div id="intro" className="mt-[26vh] max-w-chat mx-auto text-center">
+                <h1 className="text-8xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-accent-300 via-accent-500 to-accent-700 pb-2">
+                  Jayc
                 </h1>
-                <p className="mb-4 text-center text-bolt-elements-textSecondary">
-                  Bring ideas to life in seconds or get help on existing projects.
+                <p className="mb-8 text-sm font-medium uppercase tracking-[0.35em] text-bolt-elements-textTertiary">
+                  Try less
                 </p>
               </div>
             )}
@@ -154,17 +140,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   'sticky bottom-0': chatStarted,
                 })}
               >
-                {!chatStarted && (
-                  <div className="mb-4 flex flex-col items-center gap-3">
-                    <div className="flex items-center gap-2 px-5 py-3 rounded-xl border border-bolt-elements-borderColor bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent text-center">
-                      <div className="i-ph:lock-key-fill text-lg" />
-                      <span className="text-sm font-medium">Sign in required to generate code</span>
-                    </div>
-                    <p className="text-xs text-bolt-elements-textTertiary text-center max-w-sm">
-                      Jayc uses modular architecture to generate maintainable, production-ready code.
-                    </p>
-                  </div>
-                )}
                 <div
                   className={classNames(
                     'shadow-[0_8px_32px_rgba(0,0,0,0.08)] border border-bolt-elements-borderColor focus-within:border-bolt-elements-borderColorActive bg-bolt-elements-prompt-background backdrop-filter backdrop-blur-[8px] rounded-2xl overflow-hidden transition-theme',
@@ -300,34 +275,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-2 text-center text-xs text-bolt-elements-textTertiary">
-                  {MODE_HINT[thinkingMode]}
-                </div>
                 <div className="bg-bolt-elements-background-depth-1 pb-6">{/* Ghost Element */}</div>
               </div>
             </div>
-            {!chatStarted && (
-              <div id="examples" className="relative w-full max-w-2xl mx-auto mt-8 flex flex-col items-center">
-                <div className="flex flex-wrap justify-center gap-2">
-                  {EXAMPLE_PROMPTS.map((examplePrompt, index) => {
-                    return (
-                      <button
-                        key={index}
-                        onClick={(event) => {
-                          sendMessage?.(event, examplePrompt.text);
-                        }}
-                        className="px-4 py-1.5 rounded-full border border-bolt-elements-borderColor bg-bolt-elements-bg-depth-2 text-sm text-bolt-elements-textTertiary hover:text-bolt-elements-item-contentAccent hover:border-bolt-elements-borderColorActive hover:bg-bolt-elements-item-backgroundAccent transition-theme"
-                      >
-                        {examplePrompt.text}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-6 text-xs text-bolt-elements-textTertiary/60 text-center italic">
-                  Jayc is experimental — things might break from time to time, but I am trying my best!
-                </p>
-              </div>
-            )}
           </div>
           <ClientOnly>{() => <Workbench chatStarted={chatStarted} isStreaming={isStreaming} />}</ClientOnly>
         </div>
