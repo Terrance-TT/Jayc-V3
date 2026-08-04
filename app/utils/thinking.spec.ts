@@ -135,6 +135,6 @@ describe('describeControlTags / displayControlTags', () => {
     expect(describeControlTags('<jayc_control>build_now</jayc_control>')).toBe(
       '(user chose: build now — build from the current design)',
     );
-    expect(displayControlTags('<jayc_control>think_longer</jayc_control>')).toBe('⏳ Think longer');
+    expect(displayControlTags('<jayc_control>think_longer</jayc_control>')).toBe('🧭 Think longer');
   });
 });

@@ -270,13 +270,13 @@ async function runContinueThinking(params: RunGenerationParams, messages: Messag
  * Visible phase markers, injected between passes so the user can see the
  * pipeline move from thinking to building.
  */
-const EXPAND_MARKER = '\n\n---\n\n🕸 **Expanding the design…**\n\n';
-const BUILD_MARKER = '\n\n---\n\n🔨 **Design locked — building now.** Watch the files appear on the right.\n\n';
+const EXPAND_MARKER = '\n\n---\n\n🧭 **Expanding the design…**\n\n';
+const BUILD_MARKER = '\n\n---\n\n⌘ **Design locked — building now.** Watch the files appear on the right.\n\n';
 const BUILD_TIMEOUT_MARKER =
-  '\n\n---\n\n🔨 **Building from the current design.** Watch the files appear on the right.\n\n';
+  '\n\n---\n\n⌘ **Building from the current design.** Watch the files appear on the right.\n\n';
 const THINKING_CAP_MARKER =
-  '\n\n---\n\n🔨 **Thinking cap reached — building from the current design.** Watch the files appear on the right.\n\n';
-const THINK_LONGER_MARKER = '\n\n---\n\n🧠 **Thinking some more…**\n\n';
+  '\n\n---\n\n⌘ **Thinking cap reached — building from the current design.** Watch the files appear on the right.\n\n';
+const THINK_LONGER_MARKER = '\n\n---\n\n🧭 **Thinking some more…**\n\n';
 
 /**
  * Outcomes of the thinking phases: proceed to the build pass (timedOut =
@@ -299,8 +299,8 @@ function choiceNote(): string {
     '',
     '---',
     '',
-    '> 🧠 **This one is genuinely complex** — the design is partway there after ~10 minutes of thinking.',
-    '> Choose below: **⏳ Think longer** — I keep deepening the design (about 10 more minutes) — or **🔨 Build now** — I build from what the design already covers and fill the gaps with my best judgment.',
+    '> 🧭 **This one is genuinely complex** — the design is partway there after ~10 minutes of thinking.',
+    '> Choose below: **🧭 Think longer** — I keep deepening the design (about 10 more minutes) — or **⌘ Build now** — I build from what the design already covers and fill the gaps with my best judgment.',
     '',
     THINKING_CHOICE_SENTINEL,
     '',
@@ -323,7 +323,7 @@ function markerStream(text: string): ReadableStream<Uint8Array> {
 }
 
 const VERIFY_MARKER = '\n\n---\n\n🔍 **Verifying domain facts…**\n\n';
-const REVIEW_MARKER = '\n\n---\n\n🔎 **Reviewing the build…**\n\n';
+const REVIEW_MARKER = '\n\n---\n\n🔍 **Reviewing the build…**\n\n';
 
 /**
  * Unified post-build phases, run after any first build completes (pipeline,

@@ -124,8 +124,8 @@ export function describeControlTags(raw: string): string {
  */
 export function displayControlTags(raw: string): string {
   return raw
-    .replace(/<jayc_control>think_longer<\/jayc_control>/g, '⏳ Think longer')
-    .replace(/<jayc_control>build_now<\/jayc_control>/g, '🔨 Build now');
+    .replace(/<jayc_control>think_longer<\/jayc_control>/g, '🧭 Think longer')
+    .replace(/<jayc_control>build_now<\/jayc_control>/g, '⌘ Build now');
 }
 
 /**
