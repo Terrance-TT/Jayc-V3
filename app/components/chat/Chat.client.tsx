@@ -8,9 +8,16 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { getGraphSnapshot, initGraphify } from '~/lib/graphify';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
-import { useChatHistory } from '~/lib/persistence';
+import { setActionReplaySuppressed } from '~/lib/hooks/useMessageParser';
+import { chatId, useChatHistory } from '~/lib/persistence';
+import {
+  loadWorkspaceSnapshot,
+  saveWorkspaceSnapshot,
+  startWorkspaceDevServer,
+} from '~/lib/persistence/workspace-snapshot.client';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
+import { webcontainer } from '~/lib/webcontainer';
 import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
@@ -47,6 +54,9 @@ const LEGACY_TURBO_STORAGE_KEY = 'jayc_turbo_mode';
 
 // max cadence for persisting message history while a response is streaming
 const STREAMING_SAVE_INTERVAL_MS = 5_000;
+
+// max cadence for exporting workspace snapshots (node_modules included — heavy)
+const SNAPSHOT_SAVE_INTERVAL_MS = 60_000;
 
 /**
  * BYOK (bring-your-own-key): the user's OpenRouter key + model, kept in
@@ -223,6 +233,15 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(readThinkingMode);
   const [byok, setByok] = useState<ByokState | null>(readByokConfig);
 
+  /**
+   * Project-reopen fast path: while a stored workspace snapshot is being
+   * attempted, the history parse (and its action replay) waits. Settled
+   * immediately for new chats.
+   */
+  const [restoreSettled, setRestoreSettled] = useState(() => !chatId.get());
+  const restoredFromSnapshotRef = useRef(false);
+  const lastSnapshotSaveAtRef = useRef(0);
+
   const { showChat } = useStore(chatStore);
 
   const [animationScope, animate] = useAnimate();
@@ -267,6 +286,55 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   }, []);
 
   /**
+   * Fast project reopen: when this chat has a stored workspace snapshot,
+   * mount it and skip the history action replay entirely (no file rewrites,
+   * no npm reinstall), then restart the dev server from the snapshot.
+   * Falls back to the classic replay when no snapshot exists.
+   */
+  useEffect(() => {
+    if (restoreSettled) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const id = chatId.get();
+        const tree = id ? await loadWorkspaceSnapshot(id) : undefined;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (tree) {
+          setActionReplaySuppressed(true);
+          restoredFromSnapshotRef.current = true;
+
+          const container = await webcontainer;
+          await container.mount(tree);
+
+          if (!cancelled) {
+            void startWorkspaceDevServer();
+          }
+        }
+      } catch (error) {
+        logger.error('Workspace snapshot restore failed — falling back to action replay', error);
+        setActionReplaySuppressed(false);
+        restoredFromSnapshotRef.current = false;
+      } finally {
+        if (!cancelled) {
+          setRestoreSettled(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
    * Persisted-history throttle: while a response is streaming, messages change
    * on every chunk, so saving each time would hammer IndexedDB. Saves are
    * throttled to at most one per STREAMING_SAVE_INTERVAL_MS (latest messages
@@ -293,7 +361,18 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   };
 
   useEffect(() => {
+    // wait for the snapshot restore attempt before parsing history
+    if (!restoreSettled) {
+      return;
+    }
+
     parseMessages(messages, isLoading);
+
+    // the initial history parse ran with action replay suppressed (snapshot restored) — new messages act normally
+    if (restoredFromSnapshotRef.current) {
+      restoredFromSnapshotRef.current = false;
+      setActionReplaySuppressed(false);
+    }
 
     if (messages.length <= initialMessages.length) {
       return;
@@ -308,6 +387,13 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     if (!isLoading) {
       flushPendingSave();
 
+      const id = chatId.get();
+
+      if (id && Date.now() - lastSnapshotSaveAtRef.current > SNAPSHOT_SAVE_INTERVAL_MS) {
+        lastSnapshotSaveAtRef.current = Date.now();
+        void saveWorkspaceSnapshot(id);
+      }
+
       return;
     }
 
@@ -319,10 +405,28 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
         flushPendingSave();
       }, delay);
     }
-  }, [messages, isLoading, parseMessages]);
+  }, [messages, isLoading, parseMessages, restoreSettled]);
 
   // never lose an in-flight save when the chat unmounts mid-stream
   useEffect(() => flushPendingSave, []);
+
+  /**
+   * Best-effort snapshot on exit — the async export may not finish, the
+   * throttled saves above are the reliable path.
+   */
+  useEffect(() => {
+    const onPageHide = () => {
+      const id = chatId.get();
+
+      if (id) {
+        void saveWorkspaceSnapshot(id);
+      }
+    };
+
+    window.addEventListener('pagehide', onPageHide);
+
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
 
   /**
    * Thinking spans are display-only scratch: they stay visible while a

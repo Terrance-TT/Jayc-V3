@@ -8,6 +8,19 @@ import { stripThinking } from '~/utils/thinking';
 
 const logger = createScopedLogger('useMessageParser');
 
+/**
+ * When a workspace snapshot was mounted on load (workspace-snapshot.client.ts),
+ * the project files and node_modules already exist — executing history
+ * actions would rewrite files and reinstall dependencies for no reason.
+ * The flag is set before the initial history parse and cleared right after,
+ * so only NEW streamed messages execute their actions.
+ */
+let actionReplaySuppressed = false;
+
+export function setActionReplaySuppressed(suppressed: boolean) {
+  actionReplaySuppressed = suppressed;
+}
+
 const messageParser = new StreamingMessageParser({
   callbacks: {
     onArtifactOpen: (data) => {
@@ -47,14 +60,16 @@ const messageParser = new StreamingMessageParser({
          * still require manual confirmation. The classifier lives in the
          * runtime module so there is a single source of truth.
          */
-        if (shouldAutoRunCommand(data.action.content)) {
+        if (!actionReplaySuppressed && shouldAutoRunCommand(data.action.content)) {
           workbenchStore.runAction(data);
         }
 
         return;
       }
 
-      workbenchStore.runAction(data);
+      if (!actionReplaySuppressed) {
+        workbenchStore.runAction(data);
+      }
     },
   },
 });
