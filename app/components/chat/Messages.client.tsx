@@ -59,6 +59,11 @@ export const Messages = React.forwardRef<HTMLDivElement, MessagesProps>((props: 
             const isFirst = index === 0;
             const isLast = index === messages.length - 1;
 
+            // an aborted thinking phase can leave an assistant bubble with no visible content — hide it
+            if (!isUserMessage && !isLast && content.trim().length === 0) {
+              return null;
+            }
+
             return (
               <div
                 key={index}

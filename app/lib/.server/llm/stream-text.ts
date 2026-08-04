@@ -100,17 +100,24 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
  * Message hygiene before anything goes to the model: removes
  * <jayc-thinking> reasoning scratch from assistant messages and translates
  * thinking-choice control tags in user messages into plain language.
+ *
+ * Also drops messages left empty by that stripping: pausing mid-thinking
+ * leaves an assistant message holding only reasoning scratch, and an empty
+ * assistant message in the payload makes strict providers (Moonshot) reject
+ * the whole request — permanently breaking the chat until it is removed.
  */
-function sanitizeMessagesForModel(messages: Messages): Messages {
-  return messages.map((message) => {
-    if (message.role === 'assistant' && hasThinking(message.content)) {
-      return { ...message, content: stripThinking(message.content) };
-    }
+export function sanitizeMessagesForModel(messages: Messages): Messages {
+  return messages
+    .map((message) => {
+      if (message.role === 'assistant' && hasThinking(message.content)) {
+        return { ...message, content: stripThinking(message.content) };
+      }
 
-    if (message.role === 'user' && message.content.includes('<jayc_control>')) {
-      return { ...message, content: describeControlTags(message.content) };
-    }
+      if (message.role === 'user' && message.content.includes('<jayc_control>')) {
+        return { ...message, content: describeControlTags(message.content) };
+      }
 
-    return message;
-  });
+      return message;
+    })
+    .filter((message) => message.content.trim().length > 0);
 }
