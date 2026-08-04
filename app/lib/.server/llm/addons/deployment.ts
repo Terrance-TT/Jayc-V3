@@ -25,5 +25,30 @@ export const DEPLOYMENT_ADDON = `
     7. Server code MUST NOT crash when .env is absent — hosts inject variables directly; dotenv is for local dev only and silently does nothing when missing.
 
     8. After finishing a full-stack build, tell the user in 2-3 plain sentences: push to GitHub, create a Railway project from the repo, add the variables from .env.example in Railway's Variables tab, and attach a Volume if the app stores data.
+
+    9. Copy this canonical shape — do not paraphrase it:
+
+      package.json (root):
+      {
+        "engines": { "node": ">=18.18.0" },
+        "scripts": { "build": "vite build", "start": "tsx modules/api/src/index.ts" }
+      }
+
+      modules/api/src/index.ts — the whole deploy contract (API routes registered BEFORE the static/fallback lines):
+      \`\`\`ts
+      import path from 'node:path';
+      import express from 'express';
+
+      const app = express();
+      const port = Number(process.env.PORT ?? 3000); // hosts assign the port
+
+      // ... API routes here ...
+
+      const dist = path.resolve(process.cwd(), 'dist'); // cwd-relative, never __dirname
+      app.use(express.static(dist));
+      app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html'))); // SPA fallback
+
+      app.listen(port, '0.0.0.0'); // never localhost
+      \`\`\`
 </deployment_readiness>
 `;

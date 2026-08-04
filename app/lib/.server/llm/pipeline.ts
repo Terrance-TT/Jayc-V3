@@ -1,5 +1,6 @@
 import { createScopedLogger } from '~/utils/logger';
 import { isClarifyingQuestions, THINKING_CHOICE_SENTINEL } from '~/utils/thinking';
+import { checkDeployReadiness } from '~/lib/.server/deploy-check';
 import { queryFromMessage, searchFacts } from '~/lib/.server/fact-check/search';
 import {
   BUILD_EFFORT,
@@ -331,12 +332,30 @@ const REVIEW_MARKER = '\n\n---\n\n🔎 **Reviewing the build…**\n\n';
  * interaction targets, dead controls), then the facts VERIFY phase (needs
  * TAVILY_API_KEY — grounds domain rules in fresh search results). Each
  * phase skips silently when its gate is unmet and failures never block.
+ *
+ * Before the review, a deterministic deploy-readiness scan (deploy-check.ts)
+ * verifies the structural Railway rules no prompt can guarantee; its
+ * findings ride into the review so the model fixes them with full files.
  */
 async function runPostBuildPhases(params: RunGenerationParams, messages: Messages): Promise<void> {
   if (params.isFirstBuild && !params.skipReview) {
     await params.stream.switchSource(markerStream(REVIEW_MARKER));
 
-    const reviewMessages = [...messages, { role: 'user' as const, content: REVIEW_BRIDGE_PROMPT }];
+    const buildText = messages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.content)
+      .join('\n');
+    const deployFindings = checkDeployReadiness(buildText);
+    const bridge =
+      deployFindings.length > 0
+        ? `${REVIEW_BRIDGE_PROMPT}\n\nDeterministic deploy-readiness scan found these issues — fix each one as well (all normal artifact rules apply):\n${deployFindings.map((finding) => `- ${finding.detail}`).join('\n')}`
+        : REVIEW_BRIDGE_PROMPT;
+
+    if (deployFindings.length > 0) {
+      logger.info(`Deploy-readiness scan: ${deployFindings.length} finding(s) routed to the review pass`);
+    }
+
+    const reviewMessages = [...messages, { role: 'user' as const, content: bridge }];
 
     try {
       await runPass(params, {

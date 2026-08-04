@@ -28,6 +28,7 @@ handling.
 ## Inputs (what this module needs from others)
 
 - `fact-check/search.ts`: Tavily fact search (enrichment + verify phase).
+- `deploy-check.ts`: deterministic deploy-readiness scan (review-phase input).
 - `utils/thinking.ts`, `utils/constants.ts`, `utils/markdown.ts`: shared helpers.
 
 ## Boundaries
