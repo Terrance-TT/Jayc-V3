@@ -2,7 +2,10 @@ import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { getAuth } from '@clerk/remix/ssr.server';
 import { StreamingTextResponse, parseStreamPart } from 'ai';
 import { streamText } from '~/lib/.server/llm';
+import { createScopedLogger } from '~/utils/logger';
 import { stripIndents } from '~/utils/stripIndent';
+
+const logger = createScopedLogger('Enhancer');
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -82,7 +85,7 @@ async function enhancerAction(args: ActionFunctionArgs) {
 
     return new StreamingTextResponse(transformedStream);
   } catch (error) {
-    console.log(error);
+    logger.error(error);
 
     throw new Response(null, {
       status: 500,

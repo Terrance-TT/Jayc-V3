@@ -1,3 +1,7 @@
+import { createScopedLogger } from '~/utils/logger';
+
+const logger = createScopedLogger('SwitchableStream');
+
 export default class SwitchableStream extends TransformStream {
   private _controller: TransformStreamDefaultController | null = null;
   private _currentReader: ReadableStreamDefaultReader | null = null;
@@ -48,7 +52,7 @@ export default class SwitchableStream extends TransformStream {
         this._controller.enqueue(value);
       }
     } catch (error) {
-      console.log(error);
+      logger.error(error);
       this._controller.error(error);
     }
   }

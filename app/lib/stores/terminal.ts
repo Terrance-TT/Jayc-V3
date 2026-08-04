@@ -26,8 +26,10 @@ export class TerminalStore {
     try {
       const shellProcess = await newShellProcess(await this.#webcontainer, terminal);
       this.#terminals.push({ terminal, process: shellProcess });
-    } catch (error: any) {
-      terminal.write(coloredText.red('Failed to spawn shell\n\n') + error.message);
+    } catch (error) {
+      terminal.write(
+        coloredText.red('Failed to spawn shell\n\n') + (error instanceof Error ? error.message : String(error)),
+      );
       return;
     }
   }

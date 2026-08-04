@@ -199,7 +199,7 @@ export class ActionRunner {
     process.output.pipeTo(
       new WritableStream({
         write(data) {
-          console.log(data);
+          logger.debug(data);
         },
       }),
     );

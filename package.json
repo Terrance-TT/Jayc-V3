@@ -1,6 +1,6 @@
 {
-  "name": "bolt",
-  "description": "StackBlitz AI Agent",
+  "name": "jayc",
+  "description": "Jayc AI Agent",
   "private": true,
   "license": "MIT",
   "packageManager": "pnpm@9.4.0",
@@ -60,7 +60,6 @@
     "framer-motion": "^11.2.12",
     "isbot": "^4.1.0",
     "istextorbinary": "^9.5.0",
-    "jose": "^5.6.3",
     "nanostores": "^0.10.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -84,8 +83,6 @@
     "@types/react": "^18.2.20",
     "@types/react-dom": "^18.2.7",
     "fast-glob": "^3.3.2",
-    "is-ci": "^3.0.1",
-    "node-fetch": "^3.3.2",
     "prettier": "^3.3.2",
     "typescript": "^5.5.2",
     "unified": "^11.0.5",
@@ -95,8 +92,7 @@
     "vite-plugin-optimize-css-modules": "^1.1.0",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^2.0.1",
-    "wrangler": "^3.63.2",
-    "zod": "^3.23.8"
+    "wrangler": "^3.63.2"
   },
   "resolutions": {
     "@typescript-eslint/utils": "^8.0.0-alpha.30"

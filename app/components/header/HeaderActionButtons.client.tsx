@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react';
+import type { ReactNode } from 'react';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
@@ -46,7 +47,7 @@ export function HeaderActionButtons({}: HeaderActionButtonsProps) {
 interface ButtonProps {
   active?: boolean;
   disabled?: boolean;
-  children?: any;
+  children?: ReactNode;
   onClick?: VoidFunction;
 }
 
