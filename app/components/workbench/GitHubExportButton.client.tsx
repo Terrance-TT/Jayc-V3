@@ -11,11 +11,20 @@ import {
   type GitHubExportResult,
 } from '~/lib/github/export';
 import { workbenchStore } from '~/lib/stores/workbench';
+import type { FileMap } from '~/lib/stores/files';
 
-export const GitHubExportButton = memo(() => {
-  const files = useStore(workbenchStore.files);
+interface GitHubExportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  files: FileMap;
+}
 
-  const [isOpen, setIsOpen] = useState(false);
+/**
+ * The export dialog, shared by the workbench toolbar button and the Publish
+ * menu. Owns its token/name state; the GitHub token persists in
+ * localStorage only (see lib/github/export).
+ */
+export const GitHubExportDialog = memo(({ open, onOpenChange, files }: GitHubExportDialogProps) => {
   const [isExporting, setIsExporting] = useState(false);
   const [token, setToken] = useState('');
   const [repoName, setRepoName] = useState('jayc-project');
@@ -39,10 +48,13 @@ export const GitHubExportButton = memo(() => {
     return { fileCount, hasEnvFile };
   }, [files]);
 
-  const openDialog = () => {
-    setToken(getSavedToken());
-    setResult(undefined);
-    setIsOpen(true);
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setToken(getSavedToken());
+      setResult(undefined);
+    }
+
+    onOpenChange(nextOpen);
   };
 
   const handleExport = async () => {
@@ -82,127 +94,142 @@ export const GitHubExportButton = memo(() => {
   };
 
   return (
+    <DialogRoot open={open} onOpenChange={handleOpenChange}>
+      <Dialog onBackdrop={() => onOpenChange(false)} onClose={() => onOpenChange(false)}>
+        <DialogTitle>Export project to GitHub</DialogTitle>
+        <DialogDescription>
+          <div className="flex flex-col gap-4">
+            <div className="text-sm text-bolt-elements-textSecondary">
+              Pushes {fileStats.fileCount} file{fileStats.fileCount === 1 ? '' : 's'} from this project to a GitHub
+              repository.
+            </div>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-bolt-elements-textSecondary">
+                GitHub token — create one{' '}
+                <a
+                  className="text-bolt-elements-item-contentAccent underline"
+                  href="https://github.com/settings/tokens/new?scopes=repo&description=Jayc%20export"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  here
+                </a>{' '}
+                (the "repo" scope is required). Saved in your browser only.
+              </span>
+              <input
+                type="password"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                placeholder="ghp_..."
+                className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-bolt-elements-textPrimary focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-bolt-elements-textSecondary">Repository name</span>
+              <input
+                type="text"
+                value={repoName}
+                onChange={(event) => setRepoName(event.target.value)}
+                placeholder="jayc-project"
+                className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-bolt-elements-textPrimary focus:outline-none"
+              />
+              <span className="text-xs text-bolt-elements-textTertiary">
+                If the name already exists on your account, that repo gets updated instead.
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-bolt-elements-textSecondary">
+              <input type="checkbox" checked={isPrivate} onChange={(event) => setIsPrivate(event.target.checked)} />
+              Private repository
+            </label>
+
+            <div className="text-xs text-bolt-elements-textTertiary">
+              Tip: keep secrets out of git — a .gitignore covering .env is added automatically to your export.
+            </div>
+
+            {fileStats.hasEnvFile && (
+              <div className="rounded-md border-2 border-red-500 bg-bolt-elements-background-depth-2 px-4 py-3">
+                <div className="mb-2 flex items-center gap-2 text-base font-bold text-red-500">
+                  <div className="i-ph:warning text-xl" />
+                  IMPORTANT — READ BEFORE EXPORTING
+                </div>
+                <div className="text-sm text-bolt-elements-textSecondary">
+                  This export uploads ALL project files to GitHub exactly as they are — including any .env files
+                  containing your secret API keys.
+                </div>
+                <ul className="mt-2 list-disc pl-5 text-sm text-bolt-elements-textSecondary">
+                  <li>For LOCAL development, it is safe to hardcode secrets in a .env file.</li>
+                  <li>
+                    If you want to PUBLISH your project on the web, do NOT rely on .env files — store your secrets in
+                    your hosting platform's environment variable settings (e.g. your Cloudflare / Netlify / Vercel
+                    dashboard).
+                  </li>
+                  <li>
+                    If your repository is PUBLIC, anyone on the internet can see and steal your keys. You are
+                    responsible for any charges or misuse that result.
+                  </li>
+                </ul>
+                <div className="mt-2 text-sm font-bold text-bolt-elements-textPrimary">
+                  By exporting, you acknowledge this and accept full responsibility for any secrets included in the
+                  export.
+                </div>
+                <div className="mt-2 text-xs text-bolt-elements-textTertiary">
+                  Questions? Email{' '}
+                  <a className="text-bolt-elements-item-contentAccent underline" href="mailto:yungyungadam@gmail.com">
+                    yungyungadam@gmail.com
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {result && (
+              <div className="rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2 text-sm">
+                Done!{' '}
+                <a
+                  className="text-bolt-elements-item-contentAccent underline"
+                  href={result.repoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open your repository
+                </a>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <DialogButton type="secondary" onClick={() => onOpenChange(false)}>
+                Close
+              </DialogButton>
+              <DialogButton type="primary" onClick={handleExport}>
+                {isExporting ? 'Exporting…' : 'Export'}
+              </DialogButton>
+            </div>
+          </div>
+        </DialogDescription>
+      </Dialog>
+    </DialogRoot>
+  );
+});
+
+/**
+ * Toolbar trigger for the export dialog. The Publish menu is the primary
+ * entry point; this stays for direct reuse.
+ */
+export const GitHubExportButton = memo(() => {
+  const files = useStore(workbenchStore.files);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const fileCount = useMemo(() => Object.values(files).filter((dirent) => dirent?.type === 'file').length, [files]);
+
+  return (
     <>
-      <PanelHeaderButton className="mr-1 text-sm" disabled={fileStats.fileCount === 0} onClick={openDialog}>
+      <PanelHeaderButton className="mr-1 text-sm" disabled={fileCount === 0} onClick={() => setIsOpen(true)}>
         <div className="i-ph:github-logo" />
         Export to GitHub
       </PanelHeaderButton>
-      <DialogRoot open={isOpen} onOpenChange={setIsOpen}>
-        <Dialog onBackdrop={() => setIsOpen(false)} onClose={() => setIsOpen(false)}>
-          <DialogTitle>Export project to GitHub</DialogTitle>
-          <DialogDescription>
-            <div className="flex flex-col gap-4">
-              <div className="text-sm text-bolt-elements-textSecondary">
-                Pushes {fileStats.fileCount} file{fileStats.fileCount === 1 ? '' : 's'} from this project to a GitHub
-                repository.
-              </div>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-bolt-elements-textSecondary">
-                  GitHub token — create one{' '}
-                  <a
-                    className="text-bolt-elements-item-contentAccent underline"
-                    href="https://github.com/settings/tokens/new?scopes=repo&description=Jayc%20export"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    here
-                  </a>{' '}
-                  (the "repo" scope is required). Saved in your browser only.
-                </span>
-                <input
-                  type="password"
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                  placeholder="ghp_..."
-                  className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-bolt-elements-textPrimary focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-bolt-elements-textSecondary">Repository name</span>
-                <input
-                  type="text"
-                  value={repoName}
-                  onChange={(event) => setRepoName(event.target.value)}
-                  placeholder="jayc-project"
-                  className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-bolt-elements-textPrimary focus:outline-none"
-                />
-                <span className="text-xs text-bolt-elements-textTertiary">
-                  If the name already exists on your account, that repo gets updated instead.
-                </span>
-              </label>
-
-              <label className="flex items-center gap-2 text-sm text-bolt-elements-textSecondary">
-                <input type="checkbox" checked={isPrivate} onChange={(event) => setIsPrivate(event.target.checked)} />
-                Private repository
-              </label>
-
-              <div className="text-xs text-bolt-elements-textTertiary">
-                Tip: keep secrets out of git — a .gitignore covering .env is added automatically to your export.
-              </div>
-
-              {fileStats.hasEnvFile && (
-                <div className="rounded-md border-2 border-red-500 bg-bolt-elements-background-depth-2 px-4 py-3">
-                  <div className="mb-2 flex items-center gap-2 text-base font-bold text-red-500">
-                    <div className="i-ph:warning text-xl" />
-                    IMPORTANT — READ BEFORE EXPORTING
-                  </div>
-                  <div className="text-sm text-bolt-elements-textSecondary">
-                    This export uploads ALL project files to GitHub exactly as they are — including any .env files
-                    containing your secret API keys.
-                  </div>
-                  <ul className="mt-2 list-disc pl-5 text-sm text-bolt-elements-textSecondary">
-                    <li>For LOCAL development, it is safe to hardcode secrets in a .env file.</li>
-                    <li>
-                      If you want to PUBLISH your project on the web, do NOT rely on .env files — store your secrets in
-                      your hosting platform's environment variable settings (e.g. your Cloudflare / Netlify / Vercel
-                      dashboard).
-                    </li>
-                    <li>
-                      If your repository is PUBLIC, anyone on the internet can see and steal your keys. You are
-                      responsible for any charges or misuse that result.
-                    </li>
-                  </ul>
-                  <div className="mt-2 text-sm font-bold text-bolt-elements-textPrimary">
-                    By exporting, you acknowledge this and accept full responsibility for any secrets included in the
-                    export.
-                  </div>
-                  <div className="mt-2 text-xs text-bolt-elements-textTertiary">
-                    Questions? Email{' '}
-                    <a className="text-bolt-elements-item-contentAccent underline" href="mailto:yungyungadam@gmail.com">
-                      yungyungadam@gmail.com
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {result && (
-                <div className="rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2 text-sm">
-                  Done!{' '}
-                  <a
-                    className="text-bolt-elements-item-contentAccent underline"
-                    href={result.repoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open your repository
-                  </a>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <DialogButton type="secondary" onClick={() => setIsOpen(false)}>
-                  Close
-                </DialogButton>
-                <DialogButton type="primary" onClick={handleExport}>
-                  {isExporting ? 'Exporting…' : 'Export'}
-                </DialogButton>
-              </div>
-            </div>
-          </DialogDescription>
-        </Dialog>
-      </DialogRoot>
+      <GitHubExportDialog open={isOpen} onOpenChange={setIsOpen} files={files} />
     </>
   );
 });
