@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { INTEGRATION_PROVIDERS, type IntegrationProvider } from '~/lib/integrations/catalog';
@@ -44,12 +44,26 @@ export const IntegrationsDialog = memo(({ open, onOpenChange }: IntegrationsDial
 
   const [provider, setProvider] = useState<IntegrationProvider | undefined>(undefined);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const visibleProviders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return INTEGRATION_PROVIDERS;
+    }
+
+    return INTEGRATION_PROVIDERS.filter((item) =>
+      [item.name, item.blurb, ...(item.keywords ?? [])].join(' ').toLowerCase().includes(query),
+    );
+  }, [search]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       setProvider(undefined);
       setValues({});
+      setSearch('');
     }
 
     onOpenChange(nextOpen);
@@ -133,7 +147,19 @@ export const IntegrationsDialog = memo(({ open, onOpenChange }: IntegrationsDial
                 Pick a service — you'll get exact setup steps, and Jayc writes your keys into the project's .env for
                 you.
               </div>
-              {INTEGRATION_PROVIDERS.map((item) => (
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search 40+ services…"
+                className="mb-1 w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-2 py-1.5 text-sm text-bolt-elements-textPrimary focus:outline-none"
+              />
+              {visibleProviders.length === 0 && (
+                <div className="py-4 text-center text-sm text-bolt-elements-textTertiary">
+                  No matches — tell Jayc which service you need in chat instead.
+                </div>
+              )}
+              {visibleProviders.map((item) => (
                 <button
                   key={item.id}
                   className="flex items-center gap-3 rounded-lg border border-bolt-elements-borderColor px-4 py-3 text-left hover:border-bolt-elements-borderColorActive hover:bg-bolt-elements-item-backgroundAccent"
