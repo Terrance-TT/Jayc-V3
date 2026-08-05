@@ -17,7 +17,16 @@ export interface ChatHistoryItem {
 
 const persistenceEnabled = !import.meta.env.VITE_DISABLE_PERSISTENCE;
 
-export const db = persistenceEnabled ? await openDatabase() : undefined;
+/**
+ * The database handle as a promise, never a top-level `await`ed const.
+ * This module ends up in the Remix server bundle (via the chat route), and
+ * a top-level await here makes wrangler's Pages Functions bundler inject
+ * `await` into non-async CommonJS wrappers — the deployed worker then fails
+ * to parse ("Unexpected reserved word") at publish time.
+ */
+export const dbPromise: Promise<IDBDatabase | undefined> = persistenceEnabled
+  ? openDatabase()
+  : Promise.resolve(undefined);
 
 export const chatId = atom<string | undefined>(undefined);
 export const description = atom<string | undefined>(undefined);
@@ -31,61 +40,65 @@ export function useChatHistory() {
   const [urlId, setUrlId] = useState<string | undefined>();
 
   useEffect(() => {
-    if (!db) {
-      setReady(true);
+    void dbPromise.then((db) => {
+      if (!db) {
+        setReady(true);
 
-      if (persistenceEnabled) {
-        toast.error(`Chat persistence is unavailable`);
+        if (persistenceEnabled) {
+          toast.error(`Chat persistence is unavailable`);
+        }
+
+        return;
       }
 
-      return;
-    }
+      /**
+       * Background hydration: pulls server chats into the local cache so
+       * cross-device history is available and new local ids can't collide
+       * with chats created on another device.
+       */
+      hydrateLocalCacheFromServer(db);
 
-    /**
-     * Background hydration: pulls server chats into the local cache so
-     * cross-device history is available and new local ids can't collide
-     * with chats created on another device.
-     */
-    hydrateLocalCacheFromServer(db);
+      if (mixedId) {
+        getMessages(db, mixedId)
+          .then(async (storedMessages) => {
+            let item = storedMessages;
 
-    if (mixedId) {
-      getMessages(db, mixedId)
-        .then(async (storedMessages) => {
-          let item = storedMessages;
+            // local cache miss — try the server (signed-in users get cross-device history)
+            if (!item || item.messages.length === 0) {
+              const remote = await fetchChatFromServer(mixedId);
 
-          // local cache miss — try the server (signed-in users get cross-device history)
-          if (!item || item.messages.length === 0) {
-            const remote = await fetchChatFromServer(mixedId);
+              if (remote && remote.messages.length > 0) {
+                item = remote;
 
-            if (remote && remote.messages.length > 0) {
-              item = remote;
-
-              // hydrate the local cache so the next visit works offline
-              setMessages(db, remote.id, remote.messages, remote.urlId, remote.description).catch(() => undefined);
+                // hydrate the local cache so the next visit works offline
+                setMessages(db, remote.id, remote.messages, remote.urlId, remote.description).catch(() => undefined);
+              }
             }
-          }
 
-          if (item && item.messages.length > 0) {
-            setInitialMessages(item.messages);
-            setUrlId(item.urlId);
-            description.set(item.description);
-            chatId.set(item.id);
-          } else {
-            navigate(`/`, { replace: true });
-          }
+            if (item && item.messages.length > 0) {
+              setInitialMessages(item.messages);
+              setUrlId(item.urlId);
+              description.set(item.description);
+              chatId.set(item.id);
+            } else {
+              navigate(`/`, { replace: true });
+            }
 
-          setReady(true);
-        })
-        .catch((error) => {
-          toast.error(error.message);
-        });
-    }
+            setReady(true);
+          })
+          .catch((error) => {
+            toast.error(error.message);
+          });
+      }
+    });
   }, []);
 
   return {
     ready: !mixedId || ready,
     initialMessages,
     storeMessageHistory: async (messages: Message[]) => {
+      const db = await dbPromise;
+
       if (!db || messages.length === 0) {
         return;
       }

@@ -1,7 +1,5 @@
 import type { PathWatcherEvent, WebContainer } from '@webcontainer/api';
-import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
-import { Buffer } from 'node:buffer';
 import * as nodePath from 'node:path';
 import { bufferWatchEvents } from '~/utils/buffer';
 import { WORK_DIR } from '~/utils/constants';
@@ -197,24 +195,25 @@ export class FilesStore {
   }
 }
 
+/**
+ * A file is treated as binary when any of its first bytes is a NUL.
+ * Same heuristic istextorbinary applies, inlined so the server bundle
+ * (which transitively includes this store) has no dependency whose
+ * browser edition pulls in bare Node builtins — that broke the Pages
+ * Functions bundle on Cloudflare.
+ */
 function isBinaryFile(buffer: Uint8Array | undefined) {
   if (buffer === undefined) {
     return false;
   }
 
-  return getEncoding(convertToBuffer(buffer), { chunkLength: 100 }) === 'binary';
-}
+  const chunkLength = Math.min(buffer.byteLength, 100);
 
-/**
- * Converts a `Uint8Array` into a Node.js `Buffer` by copying the prototype.
- * The goal is to  avoid expensive copies. It does create a new typed array
- * but that's generally cheap as long as it uses the same underlying
- * array buffer.
- */
-function convertToBuffer(view: Uint8Array): Buffer {
-  const buffer = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  for (let i = 0; i < chunkLength; i++) {
+    if (buffer[i] === 0) {
+      return true;
+    }
+  }
 
-  Object.setPrototypeOf(buffer, Buffer.prototype);
-
-  return buffer as Buffer;
+  return false;
 }

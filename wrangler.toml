@@ -1,10 +1,7 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "bolt"
 compatibility_flags = ["nodejs_compat"]
-# 2024-09-23 or later is required so nodejs_compat also covers bare Node
-# builtin imports (e.g. `import 'path'` inside istextorbinary's browser
-# edition, which the Pages Functions bundle pulls in via the server build).
-compatibility_date = "2024-09-23"
+compatibility_date = "2024-07-01"
 pages_build_output_dir = "./build/client"
 
 # ── Cloudflare D1 (server-side chat history sync) ──────────────────

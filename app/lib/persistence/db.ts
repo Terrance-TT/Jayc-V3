@@ -6,6 +6,11 @@ const logger = createScopedLogger('ChatHistory');
 
 // this is used at the top level and never rejects
 export async function openDatabase(): Promise<IDBDatabase | undefined> {
+  // server-side rendering: the Workers runtime has no IndexedDB
+  if (typeof indexedDB === 'undefined') {
+    return undefined;
+  }
+
   return new Promise((resolve) => {
     const request = indexedDB.open('boltHistory', 1);
 

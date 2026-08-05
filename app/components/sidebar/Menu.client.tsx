@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import {
-  db,
+  dbPromise,
   deleteById,
   getAll,
   setMessages,
@@ -48,63 +48,64 @@ export function Menu() {
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
 
   const loadEntries = useCallback(() => {
-    // local alias: imported live bindings can't be narrowed inside closures
-    const database = db;
+    void dbPromise.then((database) => {
+      if (database) {
+        /**
+         * Merge local IndexedDB entries with the signed-in user's server-side
+         * chats (cross-device sync). Server sync is best-effort: when signed out
+         * or unconfigured, `fetchChatsFromServer` returns undefined and the list
+         * is exactly what it was before.
+         */
+        Promise.all([getAll(database), fetchChatsFromServer()])
+          .then(([local, remote]) => {
+            const merged = new Map<string, ChatHistoryItem>();
 
-    if (database) {
-      /**
-       * Merge local IndexedDB entries with the signed-in user's server-side
-       * chats (cross-device sync). Server sync is best-effort: when signed out
-       * or unconfigured, `fetchChatsFromServer` returns undefined and the list
-       * is exactly what it was before.
-       */
-      Promise.all([getAll(database), fetchChatsFromServer()])
-        .then(([local, remote]) => {
-          const merged = new Map<string, ChatHistoryItem>();
-
-          for (const item of local) {
-            merged.set(item.id, item);
-          }
-
-          for (const item of remote ?? []) {
-            const existing = merged.get(item.id);
-
-            // hydrate the local cache with chats made on other devices
-            if (!existing) {
-              setMessages(database, item.id, item.messages, item.urlId, item.description).catch(() => undefined);
-            }
-
-            if (!existing || item.timestamp > existing.timestamp) {
+            for (const item of local) {
               merged.set(item.id, item);
             }
-          }
 
-          return [...merged.values()].filter((item) => item.urlId && item.description);
-        })
-        .then(setList)
-        .catch((error) => toast.error(error.message));
-    }
+            for (const item of remote ?? []) {
+              const existing = merged.get(item.id);
+
+              // hydrate the local cache with chats made on other devices
+              if (!existing) {
+                setMessages(database, item.id, item.messages, item.urlId, item.description).catch(() => undefined);
+              }
+
+              if (!existing || item.timestamp > existing.timestamp) {
+                merged.set(item.id, item);
+              }
+            }
+
+            return [...merged.values()].filter((item) => item.urlId && item.description);
+          })
+          .then(setList)
+          .catch((error) => toast.error(error.message));
+      }
+    });
   }, []);
 
   const deleteItem = useCallback((event: React.UIEvent, item: ChatHistoryItem) => {
     event.preventDefault();
 
-    if (db) {
-      deleteById(db, item.id)
-        .then(() => {
-          deleteChatFromServer(item.id);
-          loadEntries();
+    void dbPromise.then((db) => {
+      if (db) {
+        deleteById(db, item.id)
+          .then(() => {
+            deleteChatFromServer(item.id);
+            loadEntries();
 
-          if (chatId.get() === item.id) {
-            // hard page navigation to clear the stores
-            window.location.pathname = '/';
-          }
-        })
-        .catch((error) => {
-          toast.error('Failed to delete conversation');
-          logger.error(error);
-        });
-    }
+            if (chatId.get() === item.id) {
+              // hard page navigation to clear the stores
+              window.location.pathname = '/';
+            }
+          })
+          .catch((error) => {
+            toast.error('Failed to delete conversation');
+            logger.error(error);
+          });
+      }
+    });
   }, []);
 
   const closeDialog = () => {
