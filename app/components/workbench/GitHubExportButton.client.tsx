@@ -80,11 +80,15 @@ export const GitHubExportDialog = memo(({ open, onOpenChange, files }: GitHubExp
 
       const skippedNote =
         exportResult.skippedBinary.length > 0 ? ` (${exportResult.skippedBinary.length} binary file(s) skipped)` : '';
+      const envNote =
+        exportResult.skippedEnv.length > 0
+          ? ` — ${exportResult.skippedEnv.length} .env file(s) kept out of the repo (secrets stay local)`
+          : '';
 
       toast.success(
         exportResult.updatedExisting
-          ? `Updated ${exportResult.repoUrl.split('/').slice(-2).join('/')} — ${exportResult.fileCount} files pushed${skippedNote}`
-          : `Project exported — ${exportResult.fileCount} files pushed${skippedNote}`,
+          ? `Updated ${exportResult.repoUrl.split('/').slice(-2).join('/')} — ${exportResult.fileCount} files pushed${skippedNote}${envNote}`
+          : `Project exported — ${exportResult.fileCount} files pushed${skippedNote}${envNote}`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to export to GitHub');
@@ -145,41 +149,16 @@ export const GitHubExportDialog = memo(({ open, onOpenChange, files }: GitHubExp
               Private repository
             </label>
 
-            <div className="text-xs text-bolt-elements-textTertiary">
-              Tip: keep secrets out of git — a .gitignore covering .env is added automatically to your export.
-            </div>
-
             {fileStats.hasEnvFile && (
-              <div className="rounded-md border-2 border-red-500 bg-bolt-elements-background-depth-2 px-4 py-3">
-                <div className="mb-2 flex items-center gap-2 text-base font-bold text-red-500">
-                  <div className="i-ph:warning text-xl" />
-                  IMPORTANT — READ BEFORE EXPORTING
+              <div className="rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 px-4 py-3">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-bolt-elements-textPrimary">
+                  <div className="i-ph:shield-check text-lg text-green-500" />
+                  Your .env files stay local
                 </div>
                 <div className="text-sm text-bolt-elements-textSecondary">
-                  This export uploads ALL project files to GitHub exactly as they are — including any .env files
-                  containing your secret API keys.
-                </div>
-                <ul className="mt-2 list-disc pl-5 text-sm text-bolt-elements-textSecondary">
-                  <li>For LOCAL development, it is safe to hardcode secrets in a .env file.</li>
-                  <li>
-                    If you want to PUBLISH your project on the web, do NOT rely on .env files — store your secrets in
-                    your hosting platform's environment variable settings (e.g. your Cloudflare / Netlify / Vercel
-                    dashboard).
-                  </li>
-                  <li>
-                    If your repository is PUBLIC, anyone on the internet can see and steal your keys. You are
-                    responsible for any charges or misuse that result.
-                  </li>
-                </ul>
-                <div className="mt-2 text-sm font-bold text-bolt-elements-textPrimary">
-                  By exporting, you acknowledge this and accept full responsibility for any secrets included in the
-                  export.
-                </div>
-                <div className="mt-2 text-xs text-bolt-elements-textTertiary">
-                  Questions? Email{' '}
-                  <a className="text-bolt-elements-item-contentAccent underline" href="mailto:yungyungadam@gmail.com">
-                    yungyungadam@gmail.com
-                  </a>
+                  This project contains .env files. They are <b>never uploaded</b> — only .env.example (placeholders)
+                  makes it into the repo. After deploying, add the real values in your host's environment variable
+                  settings (e.g. Railway's Variables tab).
                 </div>
               </div>
             )}

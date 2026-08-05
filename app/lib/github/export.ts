@@ -17,6 +17,7 @@ export interface GitHubExportResult {
   repo: string;
   fileCount: number;
   skippedBinary: string[];
+  skippedEnv: string[];
   updatedExisting: boolean;
 }
 
@@ -127,11 +128,14 @@ const GITIGNORE_ENV_APPEND = '\n\n# Secrets — never commit real API keys\n.env
 
 /**
  * Converts the workbench FileMap into GitHub git-tree entries.
- * Text files are inlined; binary files are skipped and reported.
+ * Text files are inlined; binary files are skipped and reported. Real .env
+ * files are NEVER uploaded — a .gitignore only protects future commits, not
+ * this push. (.env.example is fine: it holds placeholders.)
  */
-function buildTreeEntries(files: FileMap): { entries: TreeEntry[]; skippedBinary: string[] } {
+function buildTreeEntries(files: FileMap): { entries: TreeEntry[]; skippedBinary: string[]; skippedEnv: string[] } {
   const entries: TreeEntry[] = [];
   const skippedBinary: string[] = [];
+  const skippedEnv: string[] = [];
 
   for (const [absolutePath, dirent] of Object.entries(files)) {
     if (dirent?.type !== 'file') {
@@ -141,6 +145,11 @@ function buildTreeEntries(files: FileMap): { entries: TreeEntry[]; skippedBinary
     const repoPath = absolutePath.startsWith(WORK_DIR) ? absolutePath.slice(WORK_DIR.length + 1) : absolutePath;
 
     if (!repoPath) {
+      continue;
+    }
+
+    if (/(^|\/)\.env$/.test(repoPath) || /(^|\/)\.env\.(?!example$)[^/]+$/.test(repoPath)) {
+      skippedEnv.push(repoPath);
       continue;
     }
 
@@ -169,7 +178,7 @@ function buildTreeEntries(files: FileMap): { entries: TreeEntry[]; skippedBinary
 
   entries.sort((a, b) => a.path.localeCompare(b.path));
 
-  return { entries, skippedBinary };
+  return { entries, skippedBinary, skippedEnv };
 }
 
 /**
@@ -183,7 +192,7 @@ export async function exportProjectToGitHub(options: GitHubExportOptions): Promi
   const { token, repoName, isPrivate, files } = options;
   const repo = sanitizeRepoName(repoName);
 
-  const { entries, skippedBinary } = buildTreeEntries(files);
+  const { entries, skippedBinary, skippedEnv } = buildTreeEntries(files);
 
   if (entries.length === 0) {
     throw new Error('There are no exportable text files in this project yet.');
@@ -286,6 +295,7 @@ export async function exportProjectToGitHub(options: GitHubExportOptions): Promi
     repo,
     fileCount: entries.length,
     skippedBinary,
+    skippedEnv,
     updatedExisting,
   };
 }

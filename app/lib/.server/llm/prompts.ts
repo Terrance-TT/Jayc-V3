@@ -595,6 +595,8 @@ export const PLAN_PHASE_SUFFIX = `
   - NO (rare — a key decision genuinely belongs to the user: the purpose is ambiguous, must-have features are unknown, or the whole direction depends on their taste): output ONLY up to 3 short clarifying questions that would let you build the RIGHT thing, starting your reply with the exact line \`QUESTIONS:\`. Do NOT plan anything yet.
 
   When in doubt, plan. Only ask when the answer would change what gets built.
+
+  SCOPE for huge requests: when the request bundles many independent surfaces on top of a core app (billing, OAuth syncs, browser extensions, third-party integrations, admin tooling), do NOT cram it all into one build — a smaller WORKING app beats a larger broken one. Plan a complete, runnable Phase 1: the core job and centerpiece, every file written, every import resolving, running in the preview. Then list the remaining surfaces as explicit "Phase 2+" bullets so the user can ask for them next. Phase 1 must be finished, never a fragment.
 </phase_instruction>`;
 
 export const EXPAND_PHASE_SUFFIX = `

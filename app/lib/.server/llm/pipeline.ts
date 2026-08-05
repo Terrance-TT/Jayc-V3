@@ -1,6 +1,7 @@
 import { createScopedLogger } from '~/utils/logger';
 import { isClarifyingQuestions, THINKING_CHOICE_SENTINEL } from '~/utils/thinking';
 import { checkDeployReadiness } from '~/lib/.server/deploy-check';
+import { checkBuildIntegrity } from '~/lib/.server/integrity-check';
 import { queryFromMessage, searchFacts } from '~/lib/.server/fact-check/search';
 import {
   BUILD_EFFORT,
@@ -345,15 +346,37 @@ async function runPostBuildPhases(params: RunGenerationParams, messages: Message
       .filter((message) => message.role === 'assistant')
       .map((message) => message.content)
       .join('\n');
+
+    /**
+     * Deterministic scans verify what prompts cannot guarantee: the
+     * integrity scan catches contracted-but-never-written modules
+     * (unresolved imports, missing exports), the deploy scan catches
+     * Railway-shape violations. Findings ride into the review so the model
+     * completes the build with full file contents.
+     */
+    const integrityFindings = checkBuildIntegrity(buildText);
     const deployFindings = checkDeployReadiness(buildText);
-    const bridge =
-      deployFindings.length > 0
-        ? `${REVIEW_BRIDGE_PROMPT}\n\nDeterministic deploy-readiness scan found these issues — fix each one as well (all normal artifact rules apply):\n${deployFindings.map((finding) => `- ${finding.detail}`).join('\n')}`
-        : REVIEW_BRIDGE_PROMPT;
+    const findingSections: string[] = [];
+
+    if (integrityFindings.length > 0) {
+      findingSections.push(
+        `Deterministic integrity scan found these issues — fix EVERY one first (all normal artifact rules apply):\n${integrityFindings.map((finding) => `- ${finding.detail}`).join('\n')}`,
+      );
+    }
 
     if (deployFindings.length > 0) {
-      logger.info(`Deploy-readiness scan: ${deployFindings.length} finding(s) routed to the review pass`);
+      findingSections.push(
+        `Deterministic deploy-readiness scan found these issues — fix each one as well:\n${deployFindings.map((finding) => `- ${finding.detail}`).join('\n')}`,
+      );
     }
+
+    if (integrityFindings.length + deployFindings.length > 0) {
+      logger.info(
+        `Post-build scans: ${integrityFindings.length} integrity + ${deployFindings.length} deploy finding(s) routed to the review pass`,
+      );
+    }
+
+    const bridge = REVIEW_BRIDGE_PROMPT + (findingSections.length > 0 ? `\n\n${findingSections.join('\n\n')}` : '');
 
     const reviewMessages = [...messages, { role: 'user' as const, content: bridge }];
 
