@@ -1,13 +1,16 @@
 import { useStore } from '@nanostores/react';
+import { useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { chatStore } from '~/lib/stores/chat';
 import { classNames } from '~/utils/classNames';
 import { HeaderActionButtons } from './HeaderActionButtons.client';
+import { FeedbackDialog } from './FeedbackDialog';
 import { ChatDescription } from '~/lib/persistence/ChatDescription.client';
 import { ClerkAuthButtons } from '~/components/auth/ClerkAuthButtons.client';
 
 export function Header() {
   const chat = useStore(chatStore);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   return (
     <header
@@ -39,8 +42,17 @@ export function Header() {
       )}
       <ClientOnly>
         {() => (
-          <div className="ml-2 flex items-center">
+          <div className="ml-2 flex items-center gap-2">
+            <button
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-bolt-elements-textTertiary hover:bg-bolt-elements-item-backgroundActive hover:text-bolt-elements-textPrimary"
+              title="Send feedback — your project comes along so bugs can be reproduced"
+              onClick={() => setFeedbackOpen(true)}
+            >
+              <div className="i-ph:chat-centered-text text-lg" />
+              Feedback
+            </button>
             <ClerkAuthButtons />
+            <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
           </div>
         )}
       </ClientOnly>

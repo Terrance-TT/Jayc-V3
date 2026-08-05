@@ -16,6 +16,12 @@ interface Env {
   TAVILY_API_KEY?: string;
 
   /**
+   * Optional: gates the owner-only GET /api/feedback review endpoint.
+   * Without it the endpoint answers 404.
+   */
+  FEEDBACK_ADMIN_KEY?: string;
+
+  /**
    * Cloudflare D1 binding (see [[d1_databases]] in wrangler.toml).
    * Optional: until the database is created, sync routes report
    * "database_not_configured" and the client falls back to IndexedDB only.
