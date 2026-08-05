@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react';
 import { useRouteLoaderData } from '@remix-run/react';
-import { useClerk } from '@clerk/remix';
+import { useClerk, useAuth } from '@clerk/remix';
 import type { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { useAnimate } from 'framer-motion';
@@ -65,6 +65,13 @@ const SNAPSHOT_SAVE_INTERVAL_MS = 60_000;
 const BYOK_KEY_STORAGE = 'jayc_byok_key';
 const BYOK_MODEL_STORAGE = 'jayc_byok_model';
 
+/**
+ * Session-storage key for a prompt typed while signed out: the sign-in gate
+ * stashes it, and it sends itself once the session is active (modal sign-in
+ * or full-page redirect return).
+ */
+const PENDING_PROMPT_STORAGE_KEY = 'jayc_pending_prompt';
+
 interface ByokState {
   apiKey: string;
   model: string;
@@ -120,16 +127,62 @@ interface RootLoaderData {
  */
 let clerkSignInRedirect: (() => void) | undefined;
 
+/**
+ * The sign-in gate for the prompt flow: lets ChatImpl check session state
+ * and open the sign-in modal from event handlers, and notifies subscribers
+ * when a session becomes active so a stashed prompt can send itself.
+ * Registered by the bridge (ClerkProvider trees only); undefined when Clerk
+ * is not configured, in which case no gating happens.
+ */
+interface AuthGate {
+  isLoaded: () => boolean;
+  isSignedIn: () => boolean;
+  openSignIn: () => void;
+  subscribe: (listener: () => void) => () => void;
+}
+
+let authGate: AuthGate | undefined;
+
 function ClerkSignInBridge() {
-  const { redirectToSignIn } = useClerk();
+  const { redirectToSignIn, openSignIn } = useClerk();
+  const { isLoaded, isSignedIn } = useAuth();
+  const loadedRef = useRef(false);
+  const signedInRef = useRef<boolean | undefined>(undefined);
+  const listenersRef = useRef(new Set<() => void>());
 
   useEffect(() => {
     clerkSignInRedirect = () => redirectToSignIn();
 
+    authGate = {
+      isLoaded: () => loadedRef.current,
+      isSignedIn: () => signedInRef.current === true,
+      openSignIn: () => openSignIn(),
+      subscribe: (listener) => {
+        listenersRef.current.add(listener);
+
+        return () => {
+          listenersRef.current.delete(listener);
+        };
+      },
+    };
+
     return () => {
       clerkSignInRedirect = undefined;
+      authGate = undefined;
     };
-  }, [redirectToSignIn]);
+  }, [redirectToSignIn, openSignIn]);
+
+  // fire listeners on the signed-out → signed-in transition (modal sign-in)
+  useEffect(() => {
+    const wasSignedIn = signedInRef.current;
+
+    loadedRef.current = isLoaded;
+    signedInRef.current = isSignedIn ?? false;
+
+    if (wasSignedIn === false && signedInRef.current) {
+      listenersRef.current.forEach((listener) => listener());
+    }
+  }, [isLoaded, isSignedIn]);
 
   return null;
 }
@@ -185,8 +238,9 @@ export function Chat() {
 
   return (
     <>
-      {ready && <ChatImpl initialMessages={initialMessages} storeMessageHistory={storeMessageHistory} />}
+      {/* bridge first: it registers the auth gate before ChatImpl's effects run */}
       {rootData?.clerkState && <ClerkSignInBridge />}
+      {ready && <ChatImpl initialMessages={initialMessages} storeMessageHistory={storeMessageHistory} />}
       <ToastContainer
         closeButton={({ closeToast }) => {
           return (
@@ -502,6 +556,23 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     }
 
     /**
+     * Sign-in gate: a signed-out user's prompt never dies. It is stashed,
+     * the sign-in modal opens, and the pending-prompt effect below sends it
+     * once the session is active — generation starts with zero retyping.
+     */
+    if (authGate?.isLoaded() === true && !authGate.isSignedIn()) {
+      try {
+        window.sessionStorage.setItem(PENDING_PROMPT_STORAGE_KEY, _input);
+      } catch {
+        // storage unavailable — the modal still opens, the prompt just won't auto-send
+      }
+
+      authGate.openSignIn();
+
+      return;
+    }
+
+    /**
      * @note (delm) Usually saving files shouldn't take long but it may take longer if there
      * many unsaved files. In that case we need to block user input and show an indicator
      * of some kind so the user is aware that something is happening. But I consider the
@@ -573,6 +644,45 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
     textareaRef.current?.blur();
   };
+
+  const sendMessageRef = useRef(sendMessage);
+
+  sendMessageRef.current = sendMessage;
+
+  /**
+   * Prompts stashed while signing in send themselves once the session is
+   * active — after a modal sign-in (bridge listener) and after a full-page
+   * redirect return (already signed in on mount).
+   */
+  useEffect(() => {
+    const sendPendingPrompt = () => {
+      let pending: string | null = null;
+
+      try {
+        pending = window.sessionStorage.getItem(PENDING_PROMPT_STORAGE_KEY);
+        window.sessionStorage.removeItem(PENDING_PROMPT_STORAGE_KEY);
+      } catch {
+        return;
+      }
+
+      if (pending && pending.length > 0) {
+        setInput(pending);
+        void sendMessageRef.current({} as React.UIEvent, pending);
+      }
+    };
+
+    if (!authGate) {
+      return undefined;
+    }
+
+    if (authGate.isSignedIn()) {
+      sendPendingPrompt();
+
+      return undefined;
+    }
+
+    return authGate.subscribe(sendPendingPrompt);
+  }, []);
 
   /**
    * Fact-check (user-triggered): searches the web for reference facts about
