@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { chatId, dbPromise, getAll, fetchChatsFromServer, type ChatHistoryItem } from '~/lib/persistence';
@@ -128,8 +128,14 @@ export const FeedbackDialog = memo(({ open, onOpenChange }: FeedbackDialogProps)
   const [projects, setProjects] = useState<ChatHistoryItem[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen) {
+  /**
+   * Reset and load the project list when the dialog opens. Must key off the
+   * `open` PROP: the parent opens the dialog via its own state, and Radix
+   * only fires onOpenChange for its internal interactions — so this never
+   * runs if it waits for onOpenChange(true).
+   */
+  useEffect(() => {
+    if (open) {
       setMessage('');
       setSelectedProject('');
 
@@ -138,7 +144,9 @@ export const FeedbackDialog = memo(({ open, onOpenChange }: FeedbackDialogProps)
         .then(setProjects)
         .catch(() => setProjects([]));
     }
+  }, [open]);
 
+  const handleOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen);
   };
 
