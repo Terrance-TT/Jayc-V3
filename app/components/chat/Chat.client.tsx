@@ -9,6 +9,7 @@ import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { getGraphSnapshot, initGraphify } from '~/lib/graphify';
 import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from '~/lib/hooks';
 import { setActionReplaySuppressed } from '~/lib/hooks/useMessageParser';
+import { findSecrets, maskSecret, type DetectedSecret } from '~/lib/integrations/detect';
 import { chatId, useChatHistory } from '~/lib/persistence';
 import {
   loadWorkspaceSnapshot,
@@ -16,8 +17,10 @@ import {
   startWorkspaceDevServer,
 } from '~/lib/persistence/workspace-snapshot.client';
 import { chatStore } from '~/lib/stores/chat';
+import { integrationsAutoPrompt, openIntegrations } from '~/lib/stores/integrations';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { webcontainer } from '~/lib/webcontainer';
+import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
@@ -548,12 +551,34 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     setChatStarted(true);
   };
 
+  /**
+   * Secret interceptor: a credential pasted into chat would be sent to the
+   * AI provider and stored in chat history. Catch it before the send — and
+   * before the sign-in gate stashes it — and offer the Integrations panel.
+   */
+  const [secretWarning, setSecretWarning] = useState<{ text: string; secrets: DetectedSecret[] } | undefined>(
+    undefined,
+  );
+  const skipSecretCheckRef = useRef(false);
+
   const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
     const _input = messageInput || input;
 
     if (_input.length === 0 || isLoading) {
       return;
     }
+
+    if (!skipSecretCheckRef.current) {
+      const found = findSecrets(_input);
+
+      if (found.length > 0) {
+        setSecretWarning({ text: _input, secrets: found });
+
+        return;
+      }
+    }
+
+    skipSecretCheckRef.current = false;
 
     /**
      * Sign-in gate: a signed-out user's prompt never dies. It is stashed,
@@ -683,6 +708,23 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
     return authGate.subscribe(sendPendingPrompt);
   }, []);
+
+  /**
+   * Auto-continue after the Integrations panel saves keys: the panel sets a
+   * key-free resume message and the chat sends it, so the model's
+   * secrets-handling rules (restart the dev server, keep building) fire
+   * without the user typing anything.
+   */
+  const autoPrompt = useStore(integrationsAutoPrompt);
+
+  useEffect(() => {
+    if (!autoPrompt || isLoading) {
+      return;
+    }
+
+    integrationsAutoPrompt.set(undefined);
+    void sendMessageRef.current({} as React.UIEvent, autoPrompt);
+  }, [autoPrompt, isLoading]);
 
   /**
    * Fact-check (user-triggered): searches the web for reference facts about
@@ -838,48 +880,117 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   };
 
   return (
-    <BaseChat
-      ref={animationScope}
-      textareaRef={textareaRef}
-      input={input}
-      showChat={showChat}
-      chatStarted={chatStarted}
-      isStreaming={isLoading}
-      enhancingPrompt={enhancingPrompt}
-      promptEnhanced={promptEnhanced}
-      factChecking={factChecking}
-      factCheck={runFactCheck}
-      sendMessage={sendMessage}
-      messageRef={messageRef}
-      scrollRef={scrollRef}
-      handleInputChange={handleInputChange}
-      handleStop={abort}
-      thinkingMode={thinkingMode}
-      onCycleThinkingMode={cycleThinkingMode}
-      byokConfig={byok}
-      onByokChange={handleByokChange}
-      thinkingChoiceOffered={thinkingChoiceOffered}
-      onThinkingChoice={handleThinkingChoice}
-      messages={messages.map((message, i) => {
-        if (message.role === 'user') {
-          return message;
-        }
+    <>
+      <DialogRoot
+        open={secretWarning !== undefined}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSecretWarning(undefined);
+          }
+        }}
+      >
+        <Dialog
+          className="max-w-[440px]"
+          onBackdrop={() => setSecretWarning(undefined)}
+          onClose={() => setSecretWarning(undefined)}
+        >
+          <DialogTitle>That looks like an API key</DialogTitle>
+          <DialogDescription>
+            <div className="flex flex-col gap-4">
+              <div className="text-sm text-bolt-elements-textSecondary">
+                Your message contains what looks like{' '}
+                {secretWarning && secretWarning.secrets.length > 1 ? 'live credentials' : 'a live credential'}. Sending
+                it to chat shares it with the AI provider and stores it in chat history — the Integrations panel keeps
+                it in the project's .env instead.
+              </div>
+              <div className="flex flex-col gap-1 rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2">
+                {secretWarning?.secrets.map((secret, index) => (
+                  <div key={index} className="font-mono text-xs text-bolt-elements-textSecondary">
+                    {secret.label}: {maskSecret(secret.match)}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <DialogButton type="secondary" onClick={() => setSecretWarning(undefined)}>
+                  Cancel
+                </DialogButton>
+                <DialogButton
+                  type="secondary"
+                  onClick={() => {
+                    const text = secretWarning?.text;
 
-        return {
-          ...message,
-          content: parsedMessages[i] || '',
-        };
-      })}
-      enhancePrompt={() => {
-        enhancePrompt(
-          input,
-          (input) => {
-            setInput(input);
-            scrollTextArea();
-          },
-          handleAuthRequired,
-        );
-      }}
-    />
+                    setSecretWarning(undefined);
+
+                    if (text) {
+                      skipSecretCheckRef.current = true;
+                      void sendMessageRef.current({} as React.UIEvent, text);
+                    }
+                  }}
+                >
+                  Send anyway
+                </DialogButton>
+                <DialogButton
+                  type="primary"
+                  onClick={() => {
+                    const text = secretWarning?.text;
+
+                    setSecretWarning(undefined);
+
+                    if (text) {
+                      openIntegrations(text);
+                    }
+                  }}
+                >
+                  Move to Integrations
+                </DialogButton>
+              </div>
+            </div>
+          </DialogDescription>
+        </Dialog>
+      </DialogRoot>
+      <BaseChat
+        ref={animationScope}
+        textareaRef={textareaRef}
+        input={input}
+        showChat={showChat}
+        chatStarted={chatStarted}
+        isStreaming={isLoading}
+        enhancingPrompt={enhancingPrompt}
+        promptEnhanced={promptEnhanced}
+        factChecking={factChecking}
+        factCheck={runFactCheck}
+        sendMessage={sendMessage}
+        messageRef={messageRef}
+        scrollRef={scrollRef}
+        handleInputChange={handleInputChange}
+        handleStop={abort}
+        thinkingMode={thinkingMode}
+        onCycleThinkingMode={cycleThinkingMode}
+        byokConfig={byok}
+        onByokChange={handleByokChange}
+        thinkingChoiceOffered={thinkingChoiceOffered}
+        onThinkingChoice={handleThinkingChoice}
+        messages={messages.map((message, i) => {
+          if (message.role === 'user') {
+            return message;
+          }
+
+          return {
+            ...message,
+            content: parsedMessages[i] || '',
+          };
+        })}
+        enhancePrompt={() => {
+          enhancePrompt(
+            input,
+            (input) => {
+              setInput(input);
+              scrollTextArea();
+            },
+            handleAuthRequired,
+          );
+        }}
+      />
+    </>
   );
 });

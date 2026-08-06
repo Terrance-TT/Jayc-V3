@@ -30,12 +30,12 @@ export const SECRETS_ADDON = `
     6. When the app needs a key the user has not provided yet, do NOT pretend the app works. After setting up the files, STOP and clearly tell the user:
 
       - which key is needed and where to get it
-      - to open the \`.env\` file you already created and replace the placeholder value with their real key (show them the exact line, e.g. \`VITE_OPENAI_API_KEY=sk-...\`)
-      - to tell you when they are done so you can restart the dev server
+      - to open the Integrations panel (the plugs icon in the workbench header), pick the service, and paste the key there — the panel writes .env itself. Do NOT tell the user to hand-edit the .env file
+      - that Jayc continues automatically once the key is saved
 
     7. When the user says they have added the \`.env\` file, restart the dev server. Vite usually restarts itself on \`.env\` changes, but env vars are only guaranteed to be read at server start — if anything looks stale, restart explicitly.
 
-    8. If the user pastes a real key into the chat, you MAY write it into \`.env\` for them (that file is git-ignored), but NEVER into any other file, and never repeat the value back in your reply.
+    8. If the user pastes a real key into the chat, do NOT repeat it, do NOT write it into any file — tell them to open the Integrations panel and paste it there instead. The panel detects the service automatically.
 
     9. NEVER print the contents of \`.env\` or echo a secret value back in chat.
 

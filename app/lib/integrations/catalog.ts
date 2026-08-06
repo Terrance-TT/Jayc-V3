@@ -21,6 +21,46 @@ export interface IntegrationKey {
 
   /** true for secret keys (password field, server-side naming) */
   secret: boolean;
+
+  /**
+   * Regex source matching a real value of this key (e.g. "sk-ant-[\\w-]{20,}").
+   * Used for paste auto-detection and format checks — keep it anchored to the
+   * provider's documented prefix so it doesn't false-positive on prose.
+   */
+  pattern?: string;
+}
+
+/**
+ * Live key-check configuration. The probe runs INSIDE the user's WebContainer
+ * (never through Jayc's backend) against these hand-verified endpoints only.
+ */
+export interface ProbeConfig {
+  /** Env var whose value authenticates the probe request */
+  keyEnv: string;
+
+  /**
+   * Candidate base URLs, tried in order; multiple entries = regional variants.
+   * Supports ${env:VAR_NAME} templating for URLs derived from other values
+   * (e.g. Supabase's project URL decoded from the anon-key JWT).
+   */
+  endpoints: string[];
+
+  /** Path appended to the endpoint; may embed ${key} (e.g. Google "?key=${key}") */
+  path: string;
+
+  method?: 'GET' | 'POST';
+
+  /** Header templates; ${key} is replaced by the secret value */
+  headers: Record<string, string>;
+
+  /** Status codes that prove the key works */
+  okStatus: number[];
+
+  /**
+   * Env var that receives the winning endpoint when it differs from
+   * endpoints[0] — this is how regional providers self-configure.
+   */
+  baseUrlEnv?: string;
 }
 
 export interface IntegrationProvider {
@@ -44,6 +84,9 @@ export interface IntegrationProvider {
 
   /** 'webhook' providers hand out a URL instead of API keys (e.g. Zapier) */
   kind?: 'keys' | 'webhook';
+
+  /** Live key check (see ProbeConfig); absent = format-check only */
+  probe?: ProbeConfig;
 }
 
 export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
@@ -59,10 +102,27 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     ],
     dashboardUrl: 'https://dashboard.clerk.com/last-active?path=api-keys',
     keys: [
-      { name: 'VITE_CLERK_PUBLISHABLE_KEY', label: 'Publishable key (pk_…)', secret: false },
-      { name: 'CLERK_SECRET_KEY', label: 'Secret key (sk_…)', secret: true },
+      {
+        name: 'VITE_CLERK_PUBLISHABLE_KEY',
+        label: 'Publishable key (pk_…)',
+        secret: false,
+        pattern: 'pk_(test|live)_[A-Za-z0-9_-]{20,}',
+      },
+      {
+        name: 'CLERK_SECRET_KEY',
+        label: 'Secret key (sk_…)',
+        secret: true,
+        pattern: 'sk_(test|live)_[A-Za-z0-9_-]{20,}',
+      },
     ],
     keywords: ['auth', 'login', 'signup', 'users'],
+    probe: {
+      keyEnv: 'CLERK_SECRET_KEY',
+      endpoints: ['https://api.clerk.com'],
+      path: '/v1/users?limit=1',
+      headers: { Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+    },
   },
   {
     id: 'stripe',
@@ -76,10 +136,27 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     ],
     dashboardUrl: 'https://dashboard.stripe.com/apikeys',
     keys: [
-      { name: 'VITE_STRIPE_PUBLISHABLE_KEY', label: 'Publishable key (pk_…)', secret: false },
-      { name: 'STRIPE_SECRET_KEY', label: 'Secret key (sk_…)', secret: true },
+      {
+        name: 'VITE_STRIPE_PUBLISHABLE_KEY',
+        label: 'Publishable key (pk_…)',
+        secret: false,
+        pattern: 'pk_(live|test)_[A-Za-z0-9]{16,}',
+      },
+      {
+        name: 'STRIPE_SECRET_KEY',
+        label: 'Secret key (sk_…)',
+        secret: true,
+        pattern: '(?:sk|rk)_(live|test)_[A-Za-z0-9]{16,}',
+      },
     ],
     keywords: ['payments', 'checkout', 'billing', 'subscriptions'],
+    probe: {
+      keyEnv: 'STRIPE_SECRET_KEY',
+      endpoints: ['https://api.stripe.com'],
+      path: '/v1/charges?limit=1',
+      headers: { Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+    },
   },
   {
     id: 'supabase',
@@ -93,10 +170,28 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     ],
     dashboardUrl: 'https://supabase.com/dashboard/project/_/settings/api',
     keys: [
-      { name: 'VITE_SUPABASE_URL', label: 'Project URL', secret: false },
-      { name: 'VITE_SUPABASE_ANON_KEY', label: 'Anon public key', secret: false },
+      {
+        name: 'VITE_SUPABASE_URL',
+        label: 'Project URL',
+        secret: false,
+        pattern: 'https://[a-z0-9]{20}\\.supabase\\.co',
+      },
+      {
+        name: 'VITE_SUPABASE_ANON_KEY',
+        label: 'Anon public key',
+        secret: false,
+        pattern:
+          '(?:eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{10,}|sb_publishable_[A-Za-z0-9_-]{20,})',
+      },
     ],
     keywords: ['postgres', 'database', 'auth', 'storage'],
+    probe: {
+      keyEnv: 'VITE_SUPABASE_ANON_KEY',
+      endpoints: ['${env:VITE_SUPABASE_URL}'],
+      path: '/rest/v1/',
+      headers: { apikey: '${key}', Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+    },
   },
 
   // --- AI ---
@@ -107,8 +202,22 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'GPT models for text, vision, and images.',
     steps: ['Create an OpenAI platform account', 'Open API keys → Create new secret key', 'Copy the key below'],
     dashboardUrl: 'https://platform.openai.com/api-keys',
-    keys: [{ name: 'OPENAI_API_KEY', label: 'API key (sk-…)', secret: true }],
+    keys: [
+      {
+        name: 'OPENAI_API_KEY',
+        label: 'API key (sk-…)',
+        secret: true,
+        pattern: 'sk-(?:(?:proj|svcacct)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{40,})',
+      },
+    ],
     keywords: ['gpt', 'chatgpt', 'ai', 'llm', 'dall-e'],
+    probe: {
+      keyEnv: 'OPENAI_API_KEY',
+      endpoints: ['https://api.openai.com'],
+      path: '/v1/models',
+      headers: { Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+    },
   },
   {
     id: 'anthropic',
@@ -117,8 +226,17 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'Claude models for reasoning, writing, and coding.',
     steps: ['Create an Anthropic Console account', 'Open Settings → API keys → Create Key', 'Copy the key below'],
     dashboardUrl: 'https://console.anthropic.com/settings/keys',
-    keys: [{ name: 'ANTHROPIC_API_KEY', label: 'API key (sk-ant-…)', secret: true }],
+    keys: [
+      { name: 'ANTHROPIC_API_KEY', label: 'API key (sk-ant-…)', secret: true, pattern: 'sk-ant-[A-Za-z0-9_-]{20,}' },
+    ],
     keywords: ['claude', 'ai', 'llm'],
+    probe: {
+      keyEnv: 'ANTHROPIC_API_KEY',
+      endpoints: ['https://api.anthropic.com'],
+      path: '/v1/models',
+      headers: { 'x-api-key': '${key}', 'anthropic-version': '2023-06-01' },
+      okStatus: [200],
+    },
   },
   {
     id: 'google-ai',
@@ -127,8 +245,15 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'Gemini models for multimodal AI.',
     steps: ['Open Google AI Studio', 'Click Get API key → Create API key', 'Copy the key below'],
     dashboardUrl: 'https://aistudio.google.com/app/apikey',
-    keys: [{ name: 'GEMINI_API_KEY', label: 'API key', secret: true }],
+    keys: [{ name: 'GEMINI_API_KEY', label: 'API key', secret: true, pattern: 'AIza[0-9A-Za-z_-]{35}' }],
     keywords: ['google', 'gemini', 'ai', 'llm'],
+    probe: {
+      keyEnv: 'GEMINI_API_KEY',
+      endpoints: ['https://generativelanguage.googleapis.com'],
+      path: '/v1beta/models?key=${key}',
+      headers: {},
+      okStatus: [200],
+    },
   },
   {
     id: 'openrouter',
@@ -137,8 +262,39 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'One key for 200+ models (Meta, Mistral, DeepSeek, …).',
     steps: ['Create an OpenRouter account', 'Open Keys → Create Key', 'Copy the key below'],
     dashboardUrl: 'https://openrouter.ai/keys',
-    keys: [{ name: 'OPENROUTER_API_KEY', label: 'API key (sk-or-…)', secret: true }],
+    keys: [
+      { name: 'OPENROUTER_API_KEY', label: 'API key (sk-or-…)', secret: true, pattern: 'sk-or-[A-Za-z0-9_-]{20,}' },
+    ],
     keywords: ['ai', 'llm', 'models'],
+    probe: {
+      keyEnv: 'OPENROUTER_API_KEY',
+      endpoints: ['https://openrouter.ai'],
+      path: '/api/v1/key',
+      headers: { Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+    },
+  },
+  {
+    id: 'moonshot',
+    name: 'Moonshot (Kimi)',
+    icon: 'i-ph:brain',
+    blurb: 'Kimi models — long context, strong reasoning.',
+    steps: [
+      'Create a Moonshot platform account (platform.moonshot.ai global, platform.moonshot.cn China)',
+      'Open API Key Management → Create API Key',
+      'Copy the key below — the right region endpoint is detected automatically',
+    ],
+    dashboardUrl: 'https://platform.moonshot.ai/console/api-keys',
+    keys: [{ name: 'MOONSHOT_API_KEY', label: 'API key (sk-…)', secret: true, pattern: 'sk-[A-Za-z0-9]{40,}' }],
+    keywords: ['kimi', 'moonshot', 'ai', 'llm'],
+    probe: {
+      keyEnv: 'MOONSHOT_API_KEY',
+      endpoints: ['https://api.moonshot.ai', 'https://api.moonshot.cn'],
+      path: '/v1/models',
+      headers: { Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+      baseUrlEnv: 'MOONSHOT_BASE_URL',
+    },
   },
   {
     id: 'elevenlabs',
@@ -147,8 +303,15 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'AI voice generation and text-to-speech.',
     steps: ['Create an ElevenLabs account', 'Open your profile → API keys', 'Copy the key below'],
     dashboardUrl: 'https://elevenlabs.io/app/settings/api-keys',
-    keys: [{ name: 'ELEVENLABS_API_KEY', label: 'API key', secret: true }],
+    keys: [{ name: 'ELEVENLABS_API_KEY', label: 'API key', secret: true, pattern: 'sk_[a-f0-9]{32,}' }],
     keywords: ['voice', 'tts', 'audio', 'speech'],
+    probe: {
+      keyEnv: 'ELEVENLABS_API_KEY',
+      endpoints: ['https://api.elevenlabs.io'],
+      path: '/v1/user',
+      headers: { 'xi-api-key': '${key}' },
+      okStatus: [200],
+    },
   },
 
   // --- Email & messaging ---
@@ -159,8 +322,15 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'Transactional email with a clean API.',
     steps: ['Create a Resend account', 'Open API Keys → Create API Key', 'Copy the key below'],
     dashboardUrl: 'https://resend.com/api-keys',
-    keys: [{ name: 'RESEND_API_KEY', label: 'API key (re_…)', secret: true }],
+    keys: [{ name: 'RESEND_API_KEY', label: 'API key (re_…)', secret: true, pattern: 're_[A-Za-z0-9_]{20,}' }],
     keywords: ['email', 'transactional'],
+    probe: {
+      keyEnv: 'RESEND_API_KEY',
+      endpoints: ['https://api.resend.com'],
+      path: '/domains',
+      headers: { Authorization: 'Bearer ${key}' },
+      okStatus: [200],
+    },
   },
   {
     id: 'sendgrid',
@@ -169,7 +339,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'Transactional and marketing email at scale.',
     steps: ['Create a SendGrid account', 'Open Settings → API Keys → Create API Key', 'Copy the key below'],
     dashboardUrl: 'https://app.sendgrid.com/settings/api_keys',
-    keys: [{ name: 'SENDGRID_API_KEY', label: 'API key (SG.…)', secret: true }],
+    keys: [
+      {
+        name: 'SENDGRID_API_KEY',
+        label: 'API key (SG.…)',
+        secret: true,
+        pattern: 'SG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}',
+      },
+    ],
     keywords: ['email', 'transactional'],
   },
   {
@@ -200,7 +377,9 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       'Copy the Bot User OAuth Token below',
     ],
     dashboardUrl: 'https://api.slack.com/apps',
-    keys: [{ name: 'SLACK_BOT_TOKEN', label: 'Bot token (xoxb-…)', secret: true }],
+    keys: [
+      { name: 'SLACK_BOT_TOKEN', label: 'Bot token (xoxb-…)', secret: true, pattern: 'xox[bapors]-[A-Za-z0-9-]{10,}' },
+    ],
     keywords: ['messages', 'notifications', 'chat'],
   },
   {
@@ -280,7 +459,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       'Copy the connection string below',
     ],
     dashboardUrl: 'https://cloud.mongodb.com',
-    keys: [{ name: 'MONGODB_URI', label: 'Connection string (mongodb+srv://…)', secret: true }],
+    keys: [
+      {
+        name: 'MONGODB_URI',
+        label: 'Connection string (mongodb+srv://…)',
+        secret: true,
+        pattern: 'mongodb(?:\\+srv)?://[^\\s]+',
+      },
+    ],
     keywords: ['mongo', 'database', 'document', 'nosql'],
   },
   {
@@ -295,8 +481,13 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     ],
     dashboardUrl: 'https://console.firebase.google.com',
     keys: [
-      { name: 'VITE_FIREBASE_API_KEY', label: 'API key', secret: false },
-      { name: 'VITE_FIREBASE_AUTH_DOMAIN', label: 'Auth domain', secret: false },
+      { name: 'VITE_FIREBASE_API_KEY', label: 'API key', secret: false, pattern: 'AIza[0-9A-Za-z_-]{35}' },
+      {
+        name: 'VITE_FIREBASE_AUTH_DOMAIN',
+        label: 'Auth domain',
+        secret: false,
+        pattern: '[a-z0-9-]+\\.firebaseapp\\.com',
+      },
       { name: 'VITE_FIREBASE_PROJECT_ID', label: 'Project ID', secret: false },
       { name: 'VITE_FIREBASE_APP_ID', label: 'App ID', secret: false },
     ],
@@ -313,7 +504,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       'Copy it below',
     ],
     dashboardUrl: 'https://airtable.com/create/tokens',
-    keys: [{ name: 'AIRTABLE_API_KEY', label: 'Personal access token (pat…)', secret: true }],
+    keys: [
+      {
+        name: 'AIRTABLE_API_KEY',
+        label: 'Personal access token (pat…)',
+        secret: true,
+        pattern: 'pat[A-Za-z0-9]{14,}\\.[a-f0-9]{40,}',
+      },
+    ],
     keywords: ['spreadsheet', 'database', 'tables'],
   },
   {
@@ -327,7 +525,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       'Share your pages/databases with the integration in Notion',
     ],
     dashboardUrl: 'https://www.notion.so/my-integrations',
-    keys: [{ name: 'NOTION_API_KEY', label: 'Integration secret (ntn_…)', secret: true }],
+    keys: [
+      {
+        name: 'NOTION_API_KEY',
+        label: 'Integration secret (ntn_…)',
+        secret: true,
+        pattern: '(?:ntn_|secret_)[A-Za-z0-9]{20,}',
+      },
+    ],
     keywords: ['docs', 'wiki', 'notes', 'cms'],
   },
 
@@ -484,7 +689,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     steps: ['Create a PostHog project', 'Open Project Settings', 'Copy the project API key and host below'],
     dashboardUrl: 'https://app.posthog.com',
     keys: [
-      { name: 'VITE_POSTHOG_KEY', label: 'Project API key (phc_…)', secret: false },
+      { name: 'VITE_POSTHOG_KEY', label: 'Project API key (phc_…)', secret: false, pattern: 'phc_[A-Za-z0-9]{20,}' },
       { name: 'VITE_POSTHOG_HOST', label: 'Host (https://us.i.posthog.com)', secret: false },
     ],
     keywords: ['analytics', 'events', 'flags'],
@@ -516,7 +721,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'Issue tracking read/write API.',
     steps: ['Open Linear → Settings → API', 'Create a personal API key', 'Copy it below'],
     dashboardUrl: 'https://linear.app/settings/api',
-    keys: [{ name: 'LINEAR_API_KEY', label: 'Personal API key (lin_api_…)', secret: true }],
+    keys: [
+      {
+        name: 'LINEAR_API_KEY',
+        label: 'Personal API key (lin_api_…)',
+        secret: true,
+        pattern: 'lin_api_[A-Za-z0-9]{20,}',
+      },
+    ],
     keywords: ['issues', 'tickets', 'project management'],
   },
   {
@@ -526,7 +738,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     blurb: 'Repos, issues, and Actions via API.',
     steps: ['Open github.com/settings/tokens', 'Generate a new token (classic) with the repo scope', 'Copy it below'],
     dashboardUrl: 'https://github.com/settings/tokens',
-    keys: [{ name: 'GITHUB_TOKEN', label: 'Personal access token (ghp_…)', secret: true }],
+    keys: [
+      {
+        name: 'GITHUB_TOKEN',
+        label: 'Personal access token (ghp_…)',
+        secret: true,
+        pattern: '(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{22,}',
+      },
+    ],
     keywords: ['git', 'repos', 'version control'],
   },
   {
@@ -540,7 +759,14 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       'Copy it below',
     ],
     dashboardUrl: 'https://gitlab.com/-/user_settings/personal_access_tokens',
-    keys: [{ name: 'GITLAB_TOKEN', label: 'Personal access token (glpat-…)', secret: true }],
+    keys: [
+      {
+        name: 'GITLAB_TOKEN',
+        label: 'Personal access token (glpat-…)',
+        secret: true,
+        pattern: 'glpat-[A-Za-z0-9_-]{20,}',
+      },
+    ],
     keywords: ['git', 'repos', 'ci'],
   },
 

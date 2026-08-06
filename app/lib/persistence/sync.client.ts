@@ -1,3 +1,4 @@
+import { redactSecrets } from '~/lib/integrations/redact';
 import { getAll, setMessages } from './db';
 import type { ChatHistoryItem } from './useChatHistory';
 
@@ -43,10 +44,19 @@ async function request(input: string, init?: RequestInit): Promise<Response | un
 
 /** Push one chat (create or update) to the server. Fire-and-forget safe. */
 export async function syncChatToServer(item: ChatHistoryItem): Promise<void> {
+  /**
+   * Defense-in-depth: even if a credential slipped past the chat interceptor
+   * ("send anyway"), the server-side copy in D1 never holds a live key.
+   */
+  const sanitized: ChatHistoryItem = {
+    ...item,
+    messages: item.messages.map((message) => ({ ...message, content: redactSecrets(message.content) })),
+  };
+
   await request('/api/chats', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(item),
+    body: JSON.stringify(sanitized),
   });
 }
 
