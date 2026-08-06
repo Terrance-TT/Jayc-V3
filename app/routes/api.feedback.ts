@@ -1,8 +1,30 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@remix-run/cloudflare';
+import { createClerkClient } from '@clerk/remix/api.server';
 import { resolveSyncContext } from '~/lib/.server/db/chats.server';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('FeedbackAction');
+
+/**
+ * The sender's sign-in email, looked up from Clerk so the feedback dialog
+ * never asks for it. Best-effort: returns null when the lookup fails (the
+ * feedback itself must never fail because of this).
+ */
+async function resolveUserEmail(secretKey: string | undefined, userId: string): Promise<string | null> {
+  if (!secretKey) {
+    return null;
+  }
+
+  try {
+    const user = await createClerkClient({ secretKey }).users.getUser(userId);
+    const primary = user.emailAddresses.find((entry) => entry.id === user.primaryEmailAddressId);
+
+    return (primary ?? user.emailAddresses[0])?.emailAddress ?? null;
+  } catch (error) {
+    logger.warn(`email lookup failed for user ${userId}:`, error);
+    return null;
+  }
+}
 
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_EMAIL_LENGTH = 254;
@@ -46,8 +68,11 @@ export async function action(args: ActionFunctionArgs) {
     return json({ error: 'invalid_message' }, { status: 400 });
   }
 
-  const cleanEmail =
+  // the sign-in email wins; the body's field only remains as a fallback
+  const clerkEmail = await resolveUserEmail(args.context.cloudflare.env.CLERK_SECRET_KEY, ctx.userId);
+  const bodyEmail =
     typeof email === 'string' && email.trim().length > 0 && email.length <= MAX_EMAIL_LENGTH ? email.trim() : null;
+  const cleanEmail = clerkEmail ?? bodyEmail;
   const cleanChatId = typeof chatId === 'string' && chatId.length <= MAX_CHAT_ID_LENGTH ? chatId : null;
   const cleanProject = typeof project === 'string' && project.length > 0 ? project : null;
 
