@@ -91,8 +91,8 @@ function mapEffort(effort: ReasoningEffort): string {
   return effort === 'max' ? 'high' : effort;
 }
 
-/** How reasoning effort reaches the model, per backend. */
-type ReasoningInjection = 'moonshot' | 'openrouter' | 'none';
+// how reasoning effort reaches the model, per backend
+type ReasoningInjection = 'moonshot' | 'openrouter';
 
 /**
  * Wraps fetch with three compatibility behaviors:
@@ -100,10 +100,9 @@ type ReasoningInjection = 'moonshot' | 'openrouter' | 'none';
  * 1. Injects reasoning effort into chat completion requests, in the form
  *    each backend understands: the vendor `reasoning_effort` parameter for
  *    Moonshot-direct (K3), OpenRouter's normalized `reasoning` parameter
- *    for BYOK Kimi models, nothing for other BYOK models (they would
- *    reject or misread it). The pinned @ai-sdk/openai (0.0.44) predates
- *    native reasoning support, so passing it through fetch is the only
- *    reliable way.
+ *    for BYOK (ignored there by non-reasoning models). The pinned
+ *    ai-sdk/openai (0.0.44) predates native reasoning support, so passing
+ *    it through fetch is the only reliable way.
  * 2. For BYOK, sets OpenRouter's `provider.allow_fallbacks` so a degraded
  *    upstream provider is routed around instead of failing the request.
  * 3. When `includeThinking` is set, rewrites the streaming response so
@@ -170,6 +169,12 @@ export function getChatModel(
   /**
    * BYOK: the user's own OpenRouter key + model, in memory for one request.
    * Their key, their choice — Jayc is never billed for it.
+   *
+   * Reasoning effort is sent in OpenRouter's normalized form for every BYOK
+   * model: the gateway silently ignores it for non-reasoning models
+   * (require_parameters defaults to false), so there is no family check to
+   * maintain, and reasoning models the user picks (Kimi, DeepSeek R1, …)
+   * get a sane effort out of the box.
    */
   if (byok) {
     const openrouter = createOpenAI({
@@ -178,7 +183,7 @@ export function getChatModel(
       fetch: withGatewayCompat({
         effort,
         includeThinking,
-        reasoning: /kimi/i.test(byok.model) ? 'openrouter' : 'none',
+        reasoning: 'openrouter',
         allowFallbacks: true,
       }),
     });

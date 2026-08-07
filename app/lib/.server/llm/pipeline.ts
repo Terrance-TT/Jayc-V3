@@ -148,8 +148,65 @@ export async function runGeneration(params: RunGenerationParams): Promise<void> 
     stream.close();
   } catch (error) {
     logger.error('Generation failed', error);
-    stream.error(error);
+
+    /**
+     * Never die silently: a provider rejection (bad BYOK key, unknown model
+     * id, out of credits, rate limit) used to error the stream and surface
+     * as a generic toast, leaving the user with no idea what happened.
+     * Stream a readable explanation as the reply's final note instead.
+     */
+    try {
+      await stream.switchSource(markerStream(failureNote(error)));
+      stream.close();
+    } catch {
+      stream.error(error);
+    }
   }
+}
+
+/**
+ * Turns a generation crash into a user-readable, actionable note. Status
+ * codes come from the AI SDK's APICallError (duck-typed — no import
+ * needed); the raw provider message is truncated and never contains
+ * credentials (the key travels in the Authorization header, not bodies).
+ */
+function failureNote(error: unknown): string {
+  const err = error as { statusCode?: unknown; message?: unknown } | null;
+  const status = typeof err?.statusCode === 'number' ? err.statusCode : undefined;
+  const rawMessage = (typeof err?.message === 'string' ? err.message : String(error)).slice(0, 300);
+
+  let explanation: string;
+
+  switch (status) {
+    case 401: {
+      explanation =
+        'The provider rejected the API key (401). If you are using your own OpenRouter key, open the BYOK dialog and check it — it may be mistyped or revoked.';
+
+      break;
+    }
+    case 402: {
+      explanation =
+        'The provider says the key is out of credits (402). Top up on OpenRouter, or switch the BYOK model to one ending in `:free`.';
+
+      break;
+    }
+    case 404: {
+      explanation =
+        'The model was not found (404). Check the model id in the BYOK dialog — it must match OpenRouter exactly (e.g. `deepseek/deepseek-chat-v3-0324:free`). Note: OpenRouter free models also require enabling data sharing under Settings → Privacy on your OpenRouter account, otherwise every request 404s.';
+
+      break;
+    }
+    case 429: {
+      explanation = 'Rate limited (429). Wait a moment and send again — free models have tight shared limits.';
+
+      break;
+    }
+    default: {
+      explanation = `The provider reported: ${rawMessage || 'an unknown error'}`;
+    }
+  }
+
+  return `\n\n---\n\n✗ **Generation stopped before it finished.**\n\n${explanation}\n\nFix the issue and send your message again.\n\n`;
 }
 
 /**
