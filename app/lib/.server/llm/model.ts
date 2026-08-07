@@ -4,16 +4,11 @@ import { rewriteReasoningResponse } from './reasoning-stream';
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-/** pinned server-side — clients can never steer the backend to another host */
+/** both pinned server-side — clients can never steer the backend to another host */
+const MOONSHOT_BASE_URL = 'https://api.moonshot.ai/v1';
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-/**
- * The default model: a reasoning model in the Kimi family so the streamed
- * thinking display (reasoning-stream.ts) keeps working, at roughly a sixth
- * of K3's output price. Override with OPENROUTER_MODEL — a config change,
- * not a code change.
- */
-const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
+const DEFAULT_MODEL = 'kimi-k3';
 
 /**
  * Bring-your-own-key config: the user's own OpenRouter key and model,
@@ -47,8 +42,8 @@ function jitter(ms: number): number {
 
 /**
  * Wraps fetch with retry-on-transient-failure: 429s and 5xx are routine on
- * shared gateways (and near-guaranteed on free-tier keys), and without this
- * wrapper a single transient response killed a whole generation pass.
+ * shared gateways (and near-guaranteed on free-tier BYOK keys), and without
+ * this wrapper a single transient response killed a whole generation pass.
  * Streaming responses are never retried once they've started — only the
  * initial request, where a retry is always safe.
  */
@@ -91,21 +86,26 @@ export function withRetry(baseFetch: FetchLike): FetchLike {
   };
 }
 
-/** Our efforts go up to 'max'; OpenRouter's reasoning parameter tops out at 'high'. */
+/** OpenRouter's normalized reasoning parameter tops out at 'high'. */
 function mapEffort(effort: ReasoningEffort): string {
   return effort === 'max' ? 'high' : effort;
 }
 
+/** How reasoning effort reaches the model, per backend. */
+type ReasoningInjection = 'moonshot' | 'openrouter' | 'none';
+
 /**
  * Wraps fetch with three compatibility behaviors:
  *
- * 1. Injects reasoning configuration into chat completion requests, using
- *    OpenRouter's normalized `reasoning` parameter — only for Kimi-family
- *    models (other families would reject or misread it, and non-reasoning
- *    models have nothing to configure).
- * 2. Injects OpenRouter resilience routing (default backend only, never
- *    BYOK): `provider.allow_fallbacks` routes around a degraded upstream,
- *    and OPENROUTER_FALLBACK_MODELS provides model-level fallback.
+ * 1. Injects reasoning effort into chat completion requests, in the form
+ *    each backend understands: the vendor `reasoning_effort` parameter for
+ *    Moonshot-direct (K3), OpenRouter's normalized `reasoning` parameter
+ *    for BYOK Kimi models, nothing for other BYOK models (they would
+ *    reject or misread it). The pinned @ai-sdk/openai (0.0.44) predates
+ *    native reasoning support, so passing it through fetch is the only
+ *    reliable way.
+ * 2. For BYOK, sets OpenRouter's `provider.allow_fallbacks` so a degraded
+ *    upstream provider is routed around instead of failing the request.
  * 3. When `includeThinking` is set, rewrites the streaming response so
  *    `reasoning_content` deltas become visible text (see
  *    reasoning-stream.ts). Off for callers like the prompt enhancer whose
@@ -119,13 +119,13 @@ function mapEffort(effort: ReasoningEffort): string {
 const withGatewayCompat = ({
   effort,
   includeThinking,
-  isKimi,
-  fallbackModels,
+  reasoning,
+  allowFallbacks = false,
 }: {
   effort: ReasoningEffort;
   includeThinking: boolean;
-  isKimi: boolean;
-  fallbackModels?: string[];
+  reasoning: ReasoningInjection;
+  allowFallbacks?: boolean;
 }): FetchLike =>
   withRetry(async (input, init) => {
     if (init?.body && typeof init.body === 'string') {
@@ -133,12 +133,13 @@ const withGatewayCompat = ({
         const body = JSON.parse(init.body);
 
         if (Array.isArray(body.messages)) {
-          if (isKimi) {
+          if (reasoning === 'moonshot') {
+            body.reasoning_effort = effort;
+          } else if (reasoning === 'openrouter') {
             body.reasoning = { effort: mapEffort(effort) };
           }
 
-          if (fallbackModels && fallbackModels.length > 0) {
-            body.models = [body.model, ...fallbackModels];
+          if (allowFallbacks) {
             body.provider = { ...(body.provider ?? {}), allow_fallbacks: true };
           }
 
@@ -154,24 +155,9 @@ const withGatewayCompat = ({
     return includeThinking ? rewriteReasoningResponse(response) : response;
   });
 
-function parseFallbackModels(env: Env): string[] | undefined {
-  const raw = env.OPENROUTER_FALLBACK_MODELS;
-
-  if (!raw) {
-    return undefined;
-  }
-
-  const models = raw
-    .split(',')
-    .map((model) => model.trim())
-    .filter((model) => model.length > 0);
-
-  return models.length > 0 ? models : undefined;
-}
-
 /** The model id a request will actually use — BYOK wins, then env, then the default. */
 export function resolveModelId(env: Env, byok?: ByokConfig): string {
-  return byok?.model ?? env.OPENROUTER_MODEL ?? DEFAULT_MODEL;
+  return byok?.model ?? env.MOONSHOT_MODEL ?? DEFAULT_MODEL;
 }
 
 export function getChatModel(
@@ -183,31 +169,28 @@ export function getChatModel(
 ) {
   /**
    * BYOK: the user's own OpenRouter key + model, in memory for one request.
-   * No fallback routing or model lists — their key, their choice, exactly as
-   * entered.
+   * Their key, their choice — Jayc is never billed for it.
    */
   if (byok) {
     const openrouter = createOpenAI({
       apiKey: byok.apiKey,
       baseURL: OPENROUTER_BASE_URL,
-      fetch: withGatewayCompat({ effort, includeThinking, isKimi: /kimi/i.test(byok.model) }),
+      fetch: withGatewayCompat({
+        effort,
+        includeThinking,
+        reasoning: /kimi/i.test(byok.model) ? 'openrouter' : 'none',
+        allowFallbacks: true,
+      }),
     });
 
     return openrouter(byok.model);
   }
 
-  const model = env.OPENROUTER_MODEL || DEFAULT_MODEL;
-
-  const openrouter = createOpenAI({
+  const moonshot = createOpenAI({
     apiKey,
-    baseURL: OPENROUTER_BASE_URL,
-    fetch: withGatewayCompat({
-      effort,
-      includeThinking,
-      isKimi: /kimi/i.test(model),
-      fallbackModels: parseFallbackModels(env),
-    }),
+    baseURL: env.MOONSHOT_BASE_URL || MOONSHOT_BASE_URL,
+    fetch: withGatewayCompat({ effort, includeThinking, reasoning: 'moonshot' }),
   });
 
-  return openrouter(model);
+  return moonshot(env.MOONSHOT_MODEL || DEFAULT_MODEL);
 }

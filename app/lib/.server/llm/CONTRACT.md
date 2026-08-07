@@ -8,7 +8,7 @@ handling.
 
 ## Files
 
-- `api-key.ts`, `model.ts`: OpenRouter model construction (BYOK-aware, retry + fallback routing).
+- `api-key.ts`, `model.ts`: Moonshot (default) and OpenRouter (BYOK) model construction, with retry + fallback routing.
 - `prompts.ts`: the golden-scope system prompt + pipeline phase prompts.
 - `addons/`: conditional prompt sections (secrets, deployment, interactive, threed) + parked content.
 - `stream-text.ts`: the shared AI SDK wrapper (prompt assembly, message hygiene).

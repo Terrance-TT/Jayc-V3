@@ -3,14 +3,9 @@
  * wipe this file. Keep it in sync with the bindings the code actually uses.
  */
 interface Env {
-  OPENROUTER_API_KEY: string;
-
-  /** optional: overrides the default chat model (moonshotai/kimi-k2-thinking) */
-  OPENROUTER_MODEL?: string;
-
-  /** optional: comma-separated model-level fallbacks routed by OpenRouter */
-  OPENROUTER_FALLBACK_MODELS?: string;
-
+  MOONSHOT_API_KEY: string;
+  MOONSHOT_MODEL?: string;
+  MOONSHOT_BASE_URL?: string;
   CLERK_PUBLISHABLE_KEY?: string;
   CLERK_SECRET_KEY?: string;
 
