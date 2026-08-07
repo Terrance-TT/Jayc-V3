@@ -142,7 +142,7 @@ export const Workbench = memo(({ chatStarted, isStreaming }: WorkspaceProps) => 
                       }}
                     >
                       <div className="i-ph:terminal" />
-                      Toggle Terminal
+                      Terminal (advanced)
                     </PanelHeaderButton>
                   )}
                   <IconButton

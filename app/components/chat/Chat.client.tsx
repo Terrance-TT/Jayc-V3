@@ -11,12 +11,9 @@ import { useMessageParser, usePromptEnhancer, useShortcuts, useSnapScroll } from
 import { setActionReplaySuppressed } from '~/lib/hooks/useMessageParser';
 import { findSecrets, maskSecret, type DetectedSecret } from '~/lib/integrations/detect';
 import { chatId, useChatHistory } from '~/lib/persistence';
-import {
-  loadWorkspaceSnapshot,
-  saveWorkspaceSnapshot,
-  startWorkspaceDevServer,
-} from '~/lib/persistence/workspace-snapshot.client';
+import { loadWorkspaceSnapshot, saveWorkspaceSnapshot } from '~/lib/persistence/workspace-snapshot.client';
 import { chatStore } from '~/lib/stores/chat';
+import { devServerStore } from '~/lib/stores/dev-server.client';
 import { integrationsAutoPrompt, openIntegrations } from '~/lib/stores/integrations';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { webcontainer } from '~/lib/webcontainer';
@@ -343,6 +340,14 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
   }, []);
 
   /**
+   * The dev-server supervisor owns server start/restart so the terminal is
+   * never required. init() is idempotent.
+   */
+  useEffect(() => {
+    devServerStore.init();
+  }, []);
+
+  /**
    * Fast project reopen: when this chat has a stored workspace snapshot,
    * mount it and skip the history action replay entirely (no file rewrites,
    * no npm reinstall), then restart the dev server from the snapshot.
@@ -372,7 +377,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           await container.mount(tree);
 
           if (!cancelled) {
-            void startWorkspaceDevServer();
+            devServerStore.init();
+            void devServerStore.ensureRunning();
           }
         }
       } catch (error) {

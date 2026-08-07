@@ -125,33 +125,3 @@ export async function loadWorkspaceSnapshot(chatId: string): Promise<FileSystemT
     return undefined;
   }
 }
-
-/**
- * After a snapshot mount, bring the preview back up: spawn the project's
- * dev server in the background (same pattern as the action runner — output
- * is logged, exit never awaited). No-op for projects without a dev script.
- */
-export async function startWorkspaceDevServer(): Promise<void> {
-  try {
-    const container = await webcontainer;
-    const pkg = JSON.parse(await container.fs.readFile('package.json', 'utf-8')) as {
-      scripts?: Record<string, string>;
-    };
-
-    if (!pkg.scripts?.dev) {
-      return;
-    }
-
-    const process = await container.spawn('npm', ['run', 'dev']);
-
-    process.output.pipeTo(
-      new WritableStream({
-        write(data) {
-          logger.debug(data);
-        },
-      }),
-    );
-  } catch (error) {
-    logger.error('failed to start dev server after snapshot restore', error);
-  }
-}

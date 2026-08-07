@@ -49,7 +49,7 @@ const LONG_RUNNING_COMMAND_PATTERNS = [
   /\bwrangler\s+dev\b/,
 ];
 
-function isLongRunningCommand(command: string): boolean {
+export function isLongRunningCommand(command: string): boolean {
   return LONG_RUNNING_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
 }
 
@@ -65,20 +65,60 @@ const INSTALL_COMMAND_PATTERNS = [
   /^\s*(yarn|pnpm)\s*$/,
 ];
 
+export function isInstallCommand(command: string): boolean {
+  return INSTALL_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
+}
+
 /**
- * Decides whether a shell action is safe to execute without manual
- * confirmation. Dependency installs and long-running dev servers auto-run
- * because both are required for the preview to come up; everything else —
- * especially anything potentially destructive — still requires the user to
- * click "Run command".
+ * Patterns that match genuinely destructive commands. Shell actions come
+ * from our own pipeline, so they auto-run by default — the user may never
+ * see a terminal, and a command that sits pending means a broken app. Only
+ * commands that can destroy data or escape the sandbox stay gated behind
+ * the manual "Run command" button in the artifact.
  */
-export function shouldAutoRunCommand(command: string): boolean {
-  return isLongRunningCommand(command) || INSTALL_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
+const DANGEROUS_COMMAND_PATTERNS = [
+  /\bsudo\b/,
+
+  // rm with recursive and/or force flags
+  /\brm\s+(-\S*[rf]\S*\s)/,
+
+  // piping a remote script straight into a shell
+  /\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|da)?sh\b/,
+
+  // disk/device level operations
+  /\bmkfs\b/,
+  /\bdd\s+[^|]*\bof=\/dev\//,
+  />\s*\/dev\/(sd|nvme|hd|mapper)/,
+
+  // shutting down the container or its init
+  /\b(shutdown|reboot|halt|poweroff)\b/,
+  /\bkill\s+-?\d*\s*1\b/,
+];
+
+/**
+ * Decides whether a shell action must wait for manual confirmation. The
+ * default flipped from opt-in (only installs/dev servers auto-ran) to
+ * opt-out (everything auto-runs except this denylist) so non-technical
+ * users never have to find a "Run command" button to make their app work.
+ */
+export function isDangerousCommand(command: string): boolean {
+  return DANGEROUS_COMMAND_PATTERNS.some((pattern) => pattern.test(command));
 }
 
 export class ActionRunner {
   #webcontainer: Promise<WebContainer>;
   #currentExecutionPromise: Promise<void> = Promise.resolve();
+
+  /**
+   * Package.json watcher: #packageJsonTouched is set when this artifact
+   * writes a package.json; #installHandled flips once an install has run
+   * (or is pending) so we never auto-install twice for one artifact. The
+   * pair drives #maybeAutoInstall, which guarantees dependencies get
+   * installed even when the model forgets the install action — a
+   * non-technical user can't recover from "missing node_modules" alone.
+   */
+  #packageJsonTouched = false;
+  #installHandled = false;
 
   actions: ActionsMap = map({});
 
@@ -173,11 +213,64 @@ export class ActionRunner {
       }
 
       this.#updateAction(actionId, { status: action.abortSignal.aborted ? 'aborted' : 'complete' });
+
+      if (action.type === 'shell' && isInstallCommand(action.content)) {
+        this.#installHandled = true;
+      }
+
+      await this.#maybeAutoInstall();
     } catch (error) {
       this.#updateAction(actionId, { status: 'failed', error: 'Action failed' });
 
       // re-throw the error to be caught in the promise chain
       throw error;
+    }
+  }
+
+  /**
+   * Runs `npm install` when this artifact wrote a package.json but no
+   * install command has run (or is about to run). Runs inside the execution
+   * chain, so it is serialized with the model's own actions — a duplicate
+   * install is a fast no-op, a missing one is a dead preview.
+   */
+  async #maybeAutoInstall() {
+    if (!this.#packageJsonTouched || this.#installHandled) {
+      return;
+    }
+
+    const installPending = Object.values(this.actions.get()).some(
+      (action) =>
+        action.type === 'shell' &&
+        isInstallCommand(action.content) &&
+        (action.status === 'pending' || action.status === 'running'),
+    );
+
+    if (installPending) {
+      return;
+    }
+
+    this.#installHandled = true;
+    logger.info('package.json written without an install action — running npm install automatically');
+
+    const webcontainer = await this.#webcontainer;
+    const process = await webcontainer.spawn('jsh', ['-c', 'npm install'], {
+      env: { npm_config_yes: true },
+    });
+
+    process.output.pipeTo(
+      new WritableStream({
+        write(data) {
+          logger.debug(data);
+        },
+      }),
+    );
+
+    const exitCode = await process.exit;
+
+    if (exitCode !== 0) {
+      // let a later action (or the dev-server supervisor's next cycle) retry
+      this.#installHandled = false;
+      logger.error(`automatic npm install exited with code ${exitCode}`);
     }
   }
 
@@ -258,6 +351,10 @@ export class ActionRunner {
     try {
       await webcontainer.fs.writeFile(filePath, action.content);
       logger.debug(`File written ${filePath}`);
+
+      if (filePath === 'package.json' || filePath.endsWith('/package.json')) {
+        this.#packageJsonTouched = true;
+      }
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
 

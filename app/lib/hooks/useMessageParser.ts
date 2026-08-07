@@ -1,6 +1,6 @@
 import type { Message } from 'ai';
 import { useCallback, useState } from 'react';
-import { shouldAutoRunCommand } from '~/lib/runtime/action-runner';
+import { isDangerousCommand } from '~/lib/runtime/action-runner';
 import { StreamingMessageParser } from '~/lib/runtime/message-parser';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { createScopedLogger } from '~/utils/logger';
@@ -47,20 +47,15 @@ const messageParser = new StreamingMessageParser({
 
       if (data.action.type === 'shell') {
         /**
-         * Shell actions are only registered as pending — they must be
-         * confirmed by the user (Run command button in the artifact) before
-         * they are executed, unless shouldAutoRunCommand says they are safe.
+         * Shell actions auto-run by default: they come from our own
+         * pipeline, and a command left pending means a broken app for a
+         * user who may never see a terminal. Only denylisted destructive
+         * commands (isDangerousCommand) stay gated behind the manual
+         * "Run command" button in the artifact.
          */
         workbenchStore.addAction(data);
 
-        /**
-         * Auto-run the commands the preview depends on: dependency installs
-         * (a dev server crashes without node_modules) and the dev servers
-         * themselves. Potentially destructive commands (rm, curl | sh, etc.)
-         * still require manual confirmation. The classifier lives in the
-         * runtime module so there is a single source of truth.
-         */
-        if (!actionReplaySuppressed && shouldAutoRunCommand(data.action.content)) {
+        if (!actionReplaySuppressed && !isDangerousCommand(data.action.content)) {
           workbenchStore.runAction(data);
         }
 

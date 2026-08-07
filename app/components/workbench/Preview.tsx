@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { IconButton } from '~/components/ui/IconButton';
+import { devServerStore } from '~/lib/stores/dev-server.client';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { PortDropdown } from './PortDropdown';
 
@@ -12,6 +13,7 @@ export const Preview = memo(() => {
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
   const hasSelectedPreview = useRef(false);
   const previews = useStore(workbenchStore.previews);
+  const devServerStatus = useStore(devServerStore.status);
   const activePreview = previews[activePreviewIndex];
 
   const [url, setUrl] = useState('');
@@ -161,6 +163,21 @@ export const Preview = memo(() => {
             }}
           />
         </div>
+        {devServerStatus === 'starting' && (
+          <div className="flex items-center gap-1.5 text-xs text-bolt-elements-textSecondary whitespace-nowrap px-2">
+            <div className="i-svg-spinners:90-ring-with-bg text-sm" />
+            Starting app…
+          </div>
+        )}
+        {devServerStatus === 'error' && (
+          <button
+            className="flex items-center gap-1.5 text-xs whitespace-nowrap px-3 py-1 rounded-full bg-bolt-elements-button-danger-background text-bolt-elements-button-danger-text hover:opacity-90"
+            onClick={() => devServerStore.restart()}
+          >
+            <div className="i-ph:arrow-clockwise text-sm" />
+            Restart app
+          </button>
+        )}
         {previews.length > 1 && (
           <PortDropdown
             activePreviewIndex={activePreviewIndex}
@@ -181,7 +198,26 @@ export const Preview = memo(() => {
             src={iframeUrl}
           />
         ) : (
-          <div className="flex w-full h-full justify-center items-center bg-white">No preview available</div>
+          <div className="flex w-full h-full flex-col justify-center items-center gap-2 bg-white text-gray-500 text-sm">
+            {devServerStatus === 'error' ? (
+              <>
+                <div>The app crashed and couldn't recover on its own.</div>
+                <button
+                  className="px-4 py-1.5 rounded-md bg-gray-900 text-white text-sm hover:bg-gray-700"
+                  onClick={() => devServerStore.restart()}
+                >
+                  Restart app
+                </button>
+              </>
+            ) : devServerStatus === 'starting' ? (
+              <div className="flex items-center gap-2">
+                <div className="i-svg-spinners:90-ring-with-bg text-lg" />
+                Starting app…
+              </div>
+            ) : (
+              <div>No preview available</div>
+            )}
+          </div>
         )}
       </div>
     </div>
