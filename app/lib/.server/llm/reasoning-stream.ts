@@ -3,7 +3,7 @@ import { THINKING_CLOSE_TAG, THINKING_OPEN_TAG } from '~/utils/thinking';
 const DATA_PREFIX = 'data:';
 const DONE_MARKER = '[DONE]';
 
-interface MoonshotStreamChunk {
+interface ReasoningStreamChunk {
   choices?: Array<{
     delta?: {
       content?: unknown;
@@ -13,16 +13,16 @@ interface MoonshotStreamChunk {
 }
 
 /**
- * Creates a transform that rewrites Moonshot's `reasoning_content` stream
- * deltas into regular `content` deltas wrapped in <jayc-thinking> markers.
+ * Creates a transform that rewrites `reasoning_content` stream deltas into
+ * regular `content` deltas wrapped in <jayc-thinking> markers.
  *
- * Why: K3 always reasons and streams the reasoning as `reasoning_content`,
- * but the pinned @ai-sdk/openai version predates that field and silently
- * drops it — so at higher reasoning efforts the stream looks dead for
- * minutes. Rewriting the deltas upstream of the SDK makes the reasoning
- * visible as live progress. The markers let the client keep reasoning out
- * of the artifact parser and out of the model's own future input (see
- * app/utils/thinking.ts).
+ * Why: reasoning models (the Kimi family in particular) stream their
+ * reasoning as `reasoning_content`, but the pinned @ai-sdk/openai version
+ * predates that field and silently drops it — so at higher reasoning
+ * efforts the stream looks dead for minutes. Rewriting the deltas upstream
+ * of the SDK makes the reasoning visible as live progress. The markers let
+ * the client keep reasoning out of the artifact parser and out of the
+ * model's own future input (see app/utils/thinking.ts).
  *
  * Defensive by design: anything that is not a parseable SSE `data:` line
  * with a choices[0].delta passes through byte-identical.
@@ -45,10 +45,10 @@ export function createReasoningRewriteStream(): TransformStream<Uint8Array, Uint
       return line;
     }
 
-    let chunk: MoonshotStreamChunk;
+    let chunk: ReasoningStreamChunk;
 
     try {
-      chunk = JSON.parse(payload) as MoonshotStreamChunk;
+      chunk = JSON.parse(payload) as ReasoningStreamChunk;
     } catch {
       // not a JSON payload — pass the line through untouched
       return line;

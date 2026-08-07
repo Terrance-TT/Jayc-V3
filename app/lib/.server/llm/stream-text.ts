@@ -1,6 +1,6 @@
 import { streamText as _streamText, convertToCoreMessages } from 'ai';
 import { getAPIKey } from '~/lib/.server/llm/api-key';
-import { getMoonshotModel, type ByokConfig } from '~/lib/.server/llm/model';
+import { getChatModel, resolveModelId, type ByokConfig } from '~/lib/.server/llm/model';
 import { getTriggeredAddons } from '~/lib/.server/llm/addons';
 import { WORK_DIR } from '~/utils/constants';
 import { describeControlTags, hasThinking, stripThinking } from '~/utils/thinking';
@@ -27,8 +27,8 @@ export type StreamingOptions = Omit<Parameters<typeof _streamText>[0], 'model'>;
 
 /**
  * Output cap for bring-your-own-key calls: free-tier models have smaller
- * limits than K3, so passes are clamped to this and continuations handle
- * the rest.
+ * limits than the default reasoning model, so passes are clamped to this
+ * and continuations handle the rest.
  */
 const BYOK_MAX_TOKENS = 32_768;
 
@@ -55,7 +55,7 @@ export interface StreamTextOptions {
    */
   includeThinking?: boolean;
 
-  /** bring-your-own-key config (OpenRouter); replaces the default Moonshot backend */
+  /** bring-your-own-key config (OpenRouter); replaces the default backend for one request */
   byok?: ByokConfig;
 }
 
@@ -77,9 +77,11 @@ export function streamText(messages: Messages, env: Env, options?: StreamTextOpt
   const addons = getTriggeredAddons({ userMessage: matchText, projectGraph });
 
   return _streamText({
-    model: getMoonshotModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false, byok),
+    model: getChatModel(getAPIKey(env), env, effort ?? LIGHT_EFFORT, includeThinking ?? false, byok),
     system: getSystemPrompt(WORK_DIR, projectGraph, webSearch) + addons + (systemSuffix ?? ''),
-    temperature: 1, // K3 requires temperature=1
+
+    // kimi-family models expect temperature=1; other providers keep their own default
+    ...(/kimi/i.test(resolveModelId(env, byok)) ? { temperature: 1 } : {}),
 
     /**
      * Strip reasoning scratch and superseded file contents from older

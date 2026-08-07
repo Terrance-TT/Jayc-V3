@@ -8,11 +8,11 @@ import type { ThinkingMode } from '~/utils/thinking';
  * - power: the full plan→expand→build pipeline on every turn.
  * - auto (default): pipeline on first builds, single light pass on follow-ups.
  *
- * Cost note: K3 reasoning tokens are billed as output tokens (~$15/M), so
- * every deep phase is budgeted explicitly. The pipeline's thinking phases
- * are visible to the user (see reasoning-stream.ts) and bounded by tokens
- * plus a wall-clock backstop that transitions into the build phase — never
- * a session kill.
+ * Cost note: the default model's reasoning tokens are billed as output
+ * tokens, so every deep phase is budgeted explicitly. The pipeline's
+ * thinking phases are visible to the user (see reasoning-stream.ts) and
+ * bounded by tokens plus a wall-clock backstop that transitions into the
+ * build phase — never a session kill.
  */
 export type ReasoningEffort = 'low' | 'high' | 'max';
 

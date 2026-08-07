@@ -18,7 +18,13 @@ import { countThinkLongerChoices, isClarifyingQuestions, parseControlTag, type T
 const logger = createScopedLogger('ChatAction');
 
 const MAX_MESSAGES = 200;
-const MAX_MESSAGES_TOTAL_LENGTH = 800_000;
+
+/**
+ * Sized to the default model's 131K context window (~100K tokens worst
+ * case, leaving room for the system prompt and the model's answer) — the
+ * previous 800K dated from a 262K-context backend.
+ */
+const MAX_MESSAGES_TOTAL_LENGTH = 400_000;
 const MAX_PROJECT_GRAPH_LENGTH = 20_000;
 
 const VALID_MODES = new Set<ThinkingMode>(['auto', 'turbo', 'power']);

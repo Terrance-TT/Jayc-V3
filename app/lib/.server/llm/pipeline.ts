@@ -576,7 +576,7 @@ async function streamWithContinuations(
   let emptyRetryUsed = false;
 
   for (let segment = 0; segment < MAX_RESPONSE_SEGMENTS; segment++) {
-    const { text, finishReason } = await runPass(params, { messages, effort, maxTokens });
+    const { text, finishReason } = await runPassWithRetry(params, { messages, effort, maxTokens });
 
     if (text.trim().length === 0) {
       if (emptyRetryUsed) {
@@ -608,6 +608,26 @@ async function streamWithContinuations(
   }
 
   logger.warn('Segment ceiling reached — closing with what was produced');
+}
+
+const PASS_RETRY_DELAY_MS = 2_000;
+
+/**
+ * One automatic retry for call-time failures: gateway 5xx/429 bursts that
+ * slip past the fetch-level retry, network resets, provider flaps. runPass
+ * only rejects BEFORE streaming starts, so a retry can never double-emit
+ * tokens the user already saw — and without it, one transient blip killed
+ * the whole generation.
+ */
+async function runPassWithRetry(params: RunGenerationParams, pass: PassParams): Promise<PassResult> {
+  try {
+    return await runPass(params, pass);
+  } catch (error) {
+    logger.warn('Pass failed before streaming — retrying once after a short backoff', error);
+    await new Promise((resolve) => setTimeout(resolve, PASS_RETRY_DELAY_MS));
+
+    return runPass(params, pass);
+  }
 }
 
 /**

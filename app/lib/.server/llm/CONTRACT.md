@@ -8,7 +8,7 @@ handling.
 
 ## Files
 
-- `api-key.ts`, `model.ts`: Moonshot/OpenRouter model construction (BYOK-aware).
+- `api-key.ts`, `model.ts`: OpenRouter model construction (BYOK-aware, retry + fallback routing).
 - `prompts.ts`: the golden-scope system prompt + pipeline phase prompts.
 - `addons/`: conditional prompt sections (secrets, deployment, interactive, threed) + parked content.
 - `stream-text.ts`: the shared AI SDK wrapper (prompt assembly, message hygiene).
@@ -20,7 +20,7 @@ handling.
 
 ## Public API (index.ts exports)
 
-- `streamText`, `runGeneration`, `getMoonshotModel`, `getAPIKey`, `getSystemPrompt`
+- `streamText`, `runGeneration`, `getChatModel`, `resolveModelId`, `getAPIKey`, `getSystemPrompt`
 - `SwitchableStream`, `withHeartbeat`, `getTriggeredAddons`
 - constants (`resolveGeneration`, `looksLikeBuildRequest`, `isComplexBuildRequest`, …)
 - types (`Messages`, `StreamingOptions`, `StreamTextOptions`, `ByokConfig`)

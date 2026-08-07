@@ -1,6 +1,6 @@
 /**
- * Thinking-span markers. The server rewrites K3's `reasoning_content`
- * stream deltas into regular text wrapped in these tags (see
+ * Thinking-span markers. The server rewrites `reasoning_content` stream
+ * deltas into regular text wrapped in these tags (see
  * app/lib/.server/llm/reasoning-stream.ts), so Power mode's long reasoning
  * phases render as live progress instead of silence. They are display-only:
  * the artifact parser and the model's own input never see them.

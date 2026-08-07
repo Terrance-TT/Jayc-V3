@@ -1,3 +1,3 @@
 export function getAPIKey(env: Env) {
-  return env.MOONSHOT_API_KEY;
+  return env.OPENROUTER_API_KEY;
 }

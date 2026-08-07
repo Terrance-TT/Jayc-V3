@@ -6,7 +6,7 @@ export { getAPIKey } from './api-key';
 export { getTriggeredAddons } from './addons';
 export * from './constants';
 export { withHeartbeat } from './heartbeat';
-export { getMoonshotModel, type ByokConfig } from './model';
+export { getChatModel, resolveModelId, type ByokConfig } from './model';
 export { runGeneration } from './pipeline';
 export {
   BUILD_PHASE_PROMPT,
